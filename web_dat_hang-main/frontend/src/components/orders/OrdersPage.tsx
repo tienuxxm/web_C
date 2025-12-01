@@ -11,16 +11,12 @@ import Swal from 'sweetalert2';
 
 import toast from 'react-hot-toast';
 
-
-
-
-
 interface OrderItem {
   productCode: string;
   productName: string;
   quantity: number;
   price: number;
-  
+  color:string;
 }
 
 interface Order {
@@ -32,7 +28,8 @@ interface Order {
   tax: number;
   shipping: number;
   total: number;
-  status: OrderStatus; // 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+  status_name:string;
+  status: number; // 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
   paymentStatus: PaymentStatus; // 'pending' | 'paid' | 'failed' | 'refunded'
   shippingAddress: string;
   orderDate: string;
@@ -63,50 +60,87 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode }) => {
   const [yearlyOrders, setYearlyOrders] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+ 
+  const mapStatus = (statusId: number): OrderStatus => {
+    switch (statusId) {
+      case 0: return 'draft';     // 0: Nháp
+      case 1: return 'pending';   // 1: Chờ duyệt (Released)
+      case 2: return 'approved';  // 2: Đã duyệt
+      case 3: return 'rejected';  // 3: Từ chối
+      default: return 'pending';  // Mặc định
+    }
+  };
+  const [stats, setStats] = useState({
+    total: 0,
+    pending: 0,
+    processing: 0,
+    revenue: 0
+});
 
-
-
-
-  const fetchOrders = async (searchTerm?:string) => {
-      setLoading(true);
-      try {
-        const res = await api.get('/orders',{params: {page:page, q: searchTerm ||''} });
-              const { data, current_page, last_page,total } = res.data;
-          console.log('Fetched:', res.data);
-
-        console.log('Fetching with', { page, search });
-
-        const mapped = Object.values(res.data.data || []).map((o: any) => ({
-          id: String(o.id),
-          orderNumber: o.order_number,
-          supplier_name: o.supplier_name || '',
-          items: (o.items || []).map((it: any) => ({
-            productCode: String(it.product_code),
-            productName: it.product_name || it.product?.name || '',
-            quantity: Number(it.quantity),
-            price: Number(it.unit_price),
-          })),
-          subtotal: Number(o.subtotal),
-          tax: Number(o.tax),
-          shipping: Number(o.shipping),
-          total: Number(o.total_amount),
-          status: o.status as OrderStatus,
-          paymentStatus: o.payment_status as PaymentStatus,
-          shippingAddress: o.shipping_address,
-          orderDate: o.order_date,
-          estimatedDelivery: o.estimated_delivery,
-          notes: o.notes || '',
-        }));
-        setOrders(mapped);
-        setLastPage(last_page);
-        setTotalOrders(total);
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Không thể tải đơn hàng');
-      } finally {
-        setLoading(false);
-      }
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const params = {
+        page,
+        q: search,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
+      };
       
-    };
+      const res = await api.get('/orders', { params });
+      console.log("🔍 API Response Raw:", res.data.data[0]);
+      // LOGIC MAPPING QUAN TRỌNG: Backend (snake_case) -> Frontend (camelCase)
+      const mappedOrders: Order[] = res.data.data.map((o: any) => ({
+        id: o.id,
+        orderNumber: o.order_number,      // Map: order_number -> orderNumber
+        supplier_name: o.supplier_name,    // Map: supplier_name -> supplierName
+        customerName: o.customer_name,    // Map: customer_name -> customerName
+        intendedUse: o.intended_use,      // Map: intended_use -> intendedUse
+        total: o.total_amount,      // Map: total_amount -> totalAmount
+        status: Number(o.status),      // Map: 1 -> 'pending'
+        status_name: o.status_name,
+        orderDate: o.created_at,          // Map: created_at -> orderDate
+        itemsCount: o.items_count,
+        
+        // Map Items bên trong
+        items: o.items ? o.items.map((i: any) => ({
+          productCode: i.product_code,
+          productName: i.product_name,
+          quantity: i.quantity,
+          price: i.price||0,
+          total: i.total
+        })) : []
+      }));
+
+      setOrders(mappedOrders);
+      setLastPage(res.data.last_page); // Cập nhật số trang cuối
+    } catch (error) {
+      console.error("Failed to fetch orders", error);
+      toast.error("Không thể tải danh sách đơn hàng");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 2. Viết hàm load riêng
+const loadStats = async () => {
+    try {
+        const res = await api.get('/orders/stats');
+        setStats({
+            total: res.data.total_orders,
+            pending: res.data.pending_orders,
+            processing: res.data.processing_orders,
+            revenue: res.data.total_revenue
+        });
+    } catch (error) {
+        console.error("Lỗi tải thống kê", error);
+    }
+};
+
+// 3. Gọi hàm này trong useEffect (chạy 1 lần khi mount)
+
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -128,9 +162,9 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode }) => {
       }
 
       // status filter
-      if (selectedStatus !== 'all') {
-        temp = temp.filter(o => o.status === selectedStatus);
-      }
+      // if (selectedStatus !== 'all') {
+      //   temp = temp.filter(o => o.status === selectedStatus);
+      // }
 
       // payment filter
       if (selectedPaymentStatus !== 'all') {
@@ -142,77 +176,91 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode }) => {
 
 
 
-  const getStatusIcon = (status: OrderStatus) => {
-  switch (status) {
-    case 'draft':
+  const getStatusIcon = (statusId: number) => {
+  switch (statusId) {
+    case 1:
       return <Clock className="h-4 w-4" />;
-    case 'pending':
+    case 2:
+    case 6:
+    case 10 :
       return <AlertCircle className="h-4 w-4" />;
-    case 'approved':
+    case 3: // Đã duyệt (Approved)
+    case 7: // Chốt
+    case 13:
       return <CheckCircle className="h-4 w-4" />;
-    case 'rejected':
+    case 5:
       return <XCircle className="h-4 w-4" />;
-    case 'fulfilled':
+    case 9:
+    case 15:
       return <Package className="h-4 w-4" />;
-    case 'inactive':
+    default:
       return <XCircle className="h-4 w-4" />;
   }
 };
 
-  const getStatusColor = (status: Order['status']) => {
-    switch (status) {
-      case 'draft':
+  const getStatusColor = (statusId: number) => {
+    switch (statusId) {
+      case 1:
         return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
-      case 'pending':
+      case 2:
+      case 6:
+      case 10 :
         return 'text-blue-400 bg-blue-500/10 border-blue-500/30';
-      case 'approved':
+      case 3: // Đã duyệt (Approved)
+      case 7: // Chốt
+      case 13: // Chốt (Duplicate?)
         return 'text-purple-400 bg-purple-500/10 border-purple-500/30';
-      case 'fulfilled':
+      case 4: // Đang đặt hàng
+      case 8: // Merge
+        return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';  
+      case 9:
+      case 15:
         return 'text-green-400 bg-green-500/10 border-green-500/30';
-      case 'rejected':
+      case 5:
         return 'text-red-400 bg-red-500/10 border-red-500/30';
-      case 'inactive':
+      default:
       return 'text-gray-500 bg-gray-400/10 border-gray-400/30';
     }
   };
 
-  const getPaymentStatusColor = (status: Order['paymentStatus']) => {
-    switch (status) {
-      case 'pending':
-        return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
-      case 'paid':
-        return 'text-green-400 bg-green-500/10 border-green-500/30';
-      case 'failed':
-        return 'text-red-400 bg-red-500/10 border-red-500/30';
-      case 'refunded':
-        return 'text-gray-400 bg-gray-500/10 border-gray-500/30';
-    }
-  };
+  // const getPaymentStatusColor = (status: Order['paymentStatus']) => {
+  //   switch (status) {
+  //     case 'pending':
+  //       return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
+  //     case 'paid':
+  //       return 'text-green-400 bg-green-500/10 border-green-500/30';
+  //     case 'failed':
+  //       return 'text-red-400 bg-red-500/10 border-red-500/30';
+  //     case 'refunded':
+  //       return 'text-gray-400 bg-gray-500/10 border-gray-500/30';
+  //   }
+  // };
 
   const handleAddOrder = () => {
     setEditingOrder(null);
+    setReadOnlyMode(false);
     setShowModal(true);
   };
-  const canEditOrder = (order: Order): boolean => {
-    const status = order.status;
+  // const canEditOrder = (order: Order): boolean => {
+  //   // const status = order.status;
 
-    const role = currentUser.role?.name_role;
-    const dept = currentUser.department?.name_department;
+  //   // const role = currentUser.role?.name_role;
+  //   // const dept = currentUser.department?.name_department;
 
-    const isGD = role === 'giam_doc';
-    const isKD = dept === 'KINH_DOANH';
-    const isCU = dept === 'CUNG_UNG';
-    const isManager = ['truong_phong', 'pho_phong'].includes(role);
-    const isEmployee = role === 'nhan_vien_chinh_thuc';
+  //   // const isGD = role === 'giam_doc';
+  //   // const isKD = dept === 'KINH_DOANH';
+  //   // const isCU = dept === 'CUNG_UNG';
+  //   // const isManager = ['truong_phong', 'pho_phong'].includes(role);
+  //   // const isEmployee = role === 'nhan_vien_chinh_thuc';
 
-    if (isGD) return status === 'approved';
-    if (isKD) {
-      if (isManager) return true;
-      if (isEmployee) return status === 'draft';
-    }
-    if (isCU) return ['draft', 'pending','rejected'].includes(status);
-    return false;
-  };
+  //   // if (isGD) return status === 'approved';
+  //   // if (isKD) {
+  //   //   if (isManager) return true;
+  //   //   if (isEmployee) return status === 'draft';
+  //   // }
+  //   // if (isCU) return ['draft', 'pending','rejected'].includes(status);
+  //   // return false;
+  // };
 
 
 const handleEditOrder = async (order: Order,readOnly =false) => {
@@ -225,7 +273,7 @@ const handleEditOrder = async (order: Order,readOnly =false) => {
         orderNumber: apiOrder.order_number,
         supplierName: apiOrder.supplier_name ?? '',
         paymentStatus: apiOrder.payment_status,
-        shippingAddress: apiOrder.shipping_address,
+        intendedUse: apiOrder.intended_use,
         orderDate: apiOrder.order_date,
         estimatedDelivery: apiOrder.estimated_delivery ?? '',
         notes: apiOrder.notes ?? '',
@@ -237,7 +285,8 @@ const handleEditOrder = async (order: Order,readOnly =false) => {
           product: {
             code: it.product?.code || '',
             name: it.product?.name || '',
-            price: Number(it.product?.price || 0)
+            price: Number(it.product?.price || 0),
+            color:it.product?.color,
           },
           quantity: Number(it.quantity)
         }))
@@ -290,6 +339,7 @@ function mapOrderFromApi(o: any): Order {
     shipping: Number(o.shipping),
     total: Number(o.total_amount),
     status: o.status,
+    status_name:o.status_name,
     paymentStatus: o.payment_status,
     shippingAddress: o.shipping_address,
     orderDate: o.order_date,
@@ -316,11 +366,13 @@ function mapOrderFromApi(o: any): Order {
     try {
       const payload = {
         orderDate: orderData.orderDate,
-        shippingAddress: orderData.shippingAddress,
         supplier_name: orderData.supplier_name,
+        industry_id: orderData.industry_id,
+        intended_use: orderData.intended_use,
         items: orderData.items.map(it => ({
           productCode: it.productCode,
           quantity: it.quantity,
+          color:it.variant
         })),
         status: orderData.status,
         payment_status: orderData.payment_status,
@@ -442,15 +494,16 @@ useEffect(() => {
       setSelectedOrders([]);
       setSelectedMonths([]);
       setSelectedYears([]);
+      loadStats();
 
       if (mode === 'normal') {
-        fetchOrders(search);
+        fetchOrders();
       } else if (mode === 'monthly') {
         fetchMonthlyOrders();
       } else if (mode === 'yearly') {
         fetchYearlyOrders();
       }
-    }, [mode, page, currentUser,search]);
+    }, [mode, page,refreshKey ,currentUser,search]);
 
 const toggleMonthSelection = (month: string) => {
   setSelectedMonths(prev =>
@@ -511,37 +564,37 @@ const handleExportSelectedYears = async () => {
 const [pendingOrders, setPendingOrders] = useState(0);
 const [processingOrders, setProcessingOrders] = useState(0);
 
-useEffect(() => {
-  if (!currentUser || !orders) return;
+// useEffect(() => {
+//   if (!currentUser || !orders) return;
 
-  const statusCount = {
-    pending: 0,
-    processing: 0,
-  };
+//   const statusCount = {
+//     pending: 0,
+//     processing: 0,
+//   };
 
-  const department = currentUser?.department?.name_department;
-  const role = currentUser?.role?.name_role;
+//   const department = currentUser?.department?.name_department;
+//   const role = currentUser?.role?.name_role;
   
 
-  orders.forEach(order => {
-    const status = order.status;
+//   orders.forEach(order => {
+//     const status = order.status;
 
-    if (department === 'KINH_DOANH') {
-      if (status === 'draft') statusCount.pending++;
-      if (status === 'pending') statusCount.processing++;
-    } else if (department === 'CUNG_UNG') {
-      if (status === 'pending') statusCount.pending++;
-      if (status === 'approved') statusCount.processing++;
-    } else if (role === 'giam_doc') {
-      if (status === 'approved') statusCount.pending++;
-      if (status === 'fulfilled') statusCount.processing++;
-    }
-  });
+//     if (department === 'KINH_DOANH') {
+//       if (status === 'draft') statusCount.pending++;
+//       if (status === 'pending') statusCount.processing++;
+//     } else if (department === 'CUNG_UNG') {
+//       if (status === 'pending') statusCount.pending++;
+//       if (status === 'approved') statusCount.processing++;
+//     } else if (role === 'giam_doc') {
+//       if (status === 'approved') statusCount.pending++;
+//       if (status === 'fulfilled') statusCount.processing++;
+//     }
+//   });
 
 
-  setPendingOrders(statusCount.pending);
-  setProcessingOrders(statusCount.processing);
-}, [currentUser, orders]);
+//   setPendingOrders(statusCount.pending);
+//   setProcessingOrders(statusCount.processing);
+// }, [currentUser, orders]);
 const role = currentUser?.role?.name_role;
 const dept = currentUser?.department?.name_department;
 
@@ -569,10 +622,47 @@ useEffect(() => {
 }, [initialSearch]);
 
 useEffect(() => {
-  fetchOrders(search);
+  fetchOrders();
 }, [search, page]);
 
-  const totalRevenue = orders.filter(o => o.paymentStatus === 'paid').reduce((sum, o) => sum + o.total, 0);
+
+  const renderPagination = () => {
+  const delta = 1; 
+  const range = [];
+  const rangeWithDots = [];
+  let l;
+
+  for (let i = 1; i <= lastPage; i++) {
+    if (i === 1 || i === lastPage || (i >= page - delta && i <= page + delta)) {
+      range.push(i);
+    }
+  }
+
+  for (let i of range) {
+    if (l) {
+      if (i - l === 2) rangeWithDots.push(l + 1);
+      else if (i - l !== 1) rangeWithDots.push('...');
+    }
+    rangeWithDots.push(i);
+    l = i;
+  }
+
+  return rangeWithDots.map((pageNum, index) => (
+    pageNum === '...' ? (
+      <span key={`dots-${index}`} className="px-3 py-1 text-gray-400">...</span>
+    ) : (
+      <button
+        key={pageNum}
+        onClick={() => setPage(Number(pageNum))}
+        className={`px-3 py-1 rounded text-sm ${
+          pageNum === page ? 'bg-blue-600 text-white' : 'bg-gray-800/50 text-gray-300'
+        }`}
+      >
+        {pageNum}
+      </button>
+    )
+  ));
+};
 
   return (
     <div className="space-y-6">
@@ -598,7 +688,7 @@ useEffect(() => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-400 text-xs sm:text-sm">Total Orders</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">{totalOrders}</p>
+              <p className="text-white text-lg sm:text-2xl font-bold">{stats.total.toLocaleString()}</p>
             </div>
             <Package className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
           </div>
@@ -609,7 +699,7 @@ useEffect(() => {
             <div>
               
               <p className="text-gray-400 text-xs sm:text-sm">{pendingLabel}</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">{pendingOrders}</p>
+              <p className="text-white text-lg sm:text-2xl font-bold">{stats.pending}</p>
             </div>
             <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-400" />
           </div>
@@ -619,7 +709,7 @@ useEffect(() => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-400 text-xs sm:text-sm">{processingLabel}</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">{processingOrders}</p>
+              <p className="text-white text-lg sm:text-2xl font-bold">{stats.processing}</p>
             </div>
             <AlertCircle className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
           </div>
@@ -629,7 +719,7 @@ useEffect(() => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-400 text-xs sm:text-sm">Total Revenue</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">${totalRevenue.toLocaleString()}</p>
+              <p className="text-white text-lg sm:text-2xl font-bold">{stats.revenue.toLocaleString()} VNĐ</p>
             </div>
             <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
           </div>
@@ -667,10 +757,6 @@ useEffect(() => {
             </button>
           </div>
         )}
-       
-
-
-
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
               <input
@@ -680,7 +766,6 @@ useEffect(() => {
               accept=".csv,.txt,.xlsx"
               className="hidden"
             />
-
             <button
               onClick={() => fileInputRef.current?.click()}
               className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
@@ -698,7 +783,6 @@ useEffect(() => {
                 </option>
               ))}
             </select>
-
             <select
               value={selectedPaymentStatus}
               onChange={(e) => setSelectedPaymentStatus(e.target.value)}
@@ -714,13 +798,8 @@ useEffect(() => {
           </div>
         </div>
       </div>
-    
-
-      
-
       {/* Orders Table */}
-      {mode === 'normal' && (
-      
+      {mode === 'normal' && ( 
       <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl overflow-hidden overflow-x-auto">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
@@ -731,7 +810,7 @@ useEffect(() => {
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Items</th>
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Total</th>
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Status</th>
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Payment</th>
+                {/* <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Payment</th> */}
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Date</th>
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Actions</th>
               </tr>
@@ -742,17 +821,20 @@ useEffect(() => {
                   <td className="p-2 sm:p-4">
                     <div className="flex items-center gap-2">
            
-                    {order.status === 'fulfilled' && 
+                    {/* {order.status === 'fulfilled' && 
                     order.paymentStatus === 'paid'   &&
                     currentUser.department?.name_department === 'CUNG_UNG' &&
                     (
-                      <input
+                      
+                    )} */}
+
+                    <input
                         type="checkbox"
                         checked={selectedOrders.includes(order.id)}
                         onChange={() => toggleOrderSelection(order.id)}
                         className="form-checkbox text-blue-500 h-6 w-6"
                       />
-                    )}
+
                     <div>
                       <p className="text-white font-medium text-xs sm:text-sm">{order.orderNumber}</p>
                       <p className="text-gray-400 text-xs">ID: {order.id}</p>
@@ -774,37 +856,43 @@ useEffect(() => {
                       </p>
                     </div>
                   </td>
-                  <td className="p-2 sm:p-4 text-white font-semibold text-xs sm:text-sm">${order.total.toFixed(2)}</td>
+                  <td className="p-2 sm:p-4 text-white font-semibold text-xs sm:text-sm">{order.total} VNĐ</td>
                   <td className="p-2 sm:p-4">
                     <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium border w-fit ${getStatusColor(order.status)}`}>
                       {getStatusIcon(order.status)}
-                      <span>{order.status.toUpperCase()}</span>
+                      <span>{order.status_name.toUpperCase()}</span>
                     </div>
                   </td>
-                  <td className="p-2 sm:p-4">
+                  {/* <td className="p-2 sm:p-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getPaymentStatusColor(order.paymentStatus)}`}>
                       {order.paymentStatus.toUpperCase()}
                     </span>
-                  </td>
+                  </td> */}
                   <td className="p-2 sm:p-4 text-gray-300 text-xs sm:text-sm">{order.orderDate ? new Date(order.orderDate).toLocaleDateString('vi-VN'):''}</td>
                   <td className="p-2 sm:p-4">
                     <div className="flex items-center space-x-2">
-                     {canEditOrder(order) && ( 
+                     {/* {canEditOrder(order) && ( 
+                      
+                      )} */}
+
                       <button
                         onClick={() => handleEditOrder(order)}
                         className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors"
                       >
                         <Edit className="h-4 w-4" />
                       </button>
-                      )}
-                      {currentUser.department?.name_department === 'KINH_DOANH' && order.status === 'draft' && (
-                        <button
+
+                      {/* {currentUser.department?.name_department === 'KINH_DOANH' && order.status === 'draft' && (
+                       
+                      )} */}
+
+                         <button
                         onClick={() => handleDeleteOrder(order)}
                         className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
-                      )}
+
                         <button
                             onClick={() => handleEditOrder(order, true)} // 👈 Xem chi tiết
                             className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-500/10 rounded-lg transition-colors"
@@ -831,34 +919,22 @@ useEffect(() => {
 
       
       {lastPage > 1 && (
-      <div className="flex justify-center gap-2 py-4">
+      <div className="flex flex-col sm:flex-row justify-center items-center gap-4 py-6">
+        <div className="flex items-center gap-2">
         <button
           onClick={() => setPage(p => Math.max(1, p - 1))}
           disabled={page === 1}
-          className="px-3 py-1 rounded text-sm bg-gray-800/50 disabled:opacity-40"
-        >
-          Prev
-        </button>
+          className="px-3 py-1 rounded text-sm bg-gray-800/50 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >Prev</button>
 
-        {Array.from({ length: lastPage }, (_, i) => i + 1).map(p => (
-          <button
-            key={p}
-            onClick={() => setPage(p)}
-            className={`px-3 py-1 rounded text-sm ${
-              p === page ? 'bg-blue-600 text-white' : 'bg-gray-800/50 text-gray-300'
-            }`}
-          >
-            {p}
-          </button>
-        ))}
+        {renderPagination()} {/* <--- Thay thế đoạn Array.from ở đây */}
 
-        <button
-          onClick={() => setPage(p => Math.min(lastPage, p + 1))}
-          disabled={page === lastPage}
-          className="px-3 py-1 rounded text-sm bg-gray-800/50 disabled:opacity-40"
-        >
-          Next
-        </button>
+        <button 
+            onClick={() => setPage(p => Math.min(lastPage, p + 1))} 
+            disabled={page === lastPage}
+            className="px-3 py-1 rounded text-sm bg-gray-800/50 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >Next</button>
+        </div>
       </div>
       )}
 
@@ -943,7 +1019,6 @@ useEffect(() => {
                     className="form-checkbox text-green-500 h-5 w-5"
                   />
                 </div>
-
                 {/* Yearly Summary */}
                 <div className="mb-6">
                   <h3 className="text-white text-base sm:text-lg font-semibold mb-3">Tổng kết năm</h3>

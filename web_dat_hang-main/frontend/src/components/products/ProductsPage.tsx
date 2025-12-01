@@ -410,7 +410,7 @@ useEffect(() => {
         </button>
       );
     });
-    //   const fetchAllProducts = async (): Promise<Product[]> => {
+//   const fetchAllProducts = async (): Promise<Product[]> => {
 //   let page = 1;
 //   let all: Product[] = [];
 //   let lastPage = 1;

@@ -49,7 +49,9 @@ Route::middleware('auth:api')->group(function () {
     Route::get('search', 'search');
     Route::get('merged-by-month', 'mergedByMonth'); // Đưa trước
     Route::get('merged-by-year', 'mergedByYear');   // Thêm route cho yearly
-    Route::patch('merge',         'combine');       // Đưa trước
+    Route::patch('merge',         'combine');  
+    Route::get('stats','stats');
+     // Đưa trước
     Route::get('/',        'index');   
     Route::post('/',       'store');
     Route::match(['put', 'patch'], '{order}', 'update');
