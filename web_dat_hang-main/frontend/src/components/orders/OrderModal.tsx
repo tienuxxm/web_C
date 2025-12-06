@@ -3,7 +3,7 @@ import { X, Plus, Trash2, Package } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { getCurrentUser } from '../../utils/auth';
-
+import MySwal from '../../utils/swal';
 
 interface OrderItem {
   id?: string | number;
@@ -322,59 +322,84 @@ useEffect(() => {
   };
   
 
+  // ✅ LOGIC MỚI: REMOVE ITEM VỚI SWEETALERT2
   const removeItem = async (index: number) => {
     const itemToRemove = formData.items[index];
-    // --- DEBUG LOG: Kiểm tra xem dữ liệu có đúng không ---
-    console.log("🛠 KIỂM TRA TÁCH ĐƠN:", {
-        "1. Mã đơn (MP?)": formData.orderNumber,
-        "2. Trạng thái (8?)": formData.status,
-        "3. Item ID (Có ID thật?)": itemToRemove.id,
-        "👉 Kết quả check": {
-            isMergeOrder: formData.orderNumber?.startsWith('MP'),
-            isDraft: Number(formData.status) === 8, // Ép kiểu Number cho chắc
-            hasRealId: itemToRemove.id && !String(itemToRemove.id).startsWith('temp')
-        }
-    });
 
-    // Điều kiện kích hoạt Tách đơn:
-    // 1. Đơn hàng đang mở (có ID)
-    // 2. Là đơn Gộp (Mã bắt đầu bằng MP hoặc status = 8)
-    // 3. Trạng thái là Nháp (8) - Chỉ cho tách khi đang nháp
-    // 4. Item này đã tồn tại trong DB (có ID)
+    // Điều kiện kiểm tra (Giữ nguyên)
     const isMergeOrder = formData.orderNumber?.startsWith('MP');
-    const isDraft = formData.status === 8; // 8 là Type Merge/Nháp
-    const hasRealId = itemToRemove.id && !String(itemToRemove.id).startsWith('temp');
+    const isDraft = Number(formData.status) === 8;
+    // Fallback: Tìm ID từ item hoặc từ logic khác nếu cần
+    const realId = itemToRemove.id; 
+    const hasRealId = realId && !String(realId).startsWith('temp');
 
     if (isMergeOrder && isDraft && hasRealId) {
-      const confirmSplit = window.confirm(
-        `📦 TÁCH ĐƠN HÀNG?\n\nBạn đang xóa "${itemToRemove.productName}" khỏi đơn gộp này.\n\nHệ thống sẽ TỰ ĐỘNG TÁCH dòng này sang một Đơn Gộp Mới (Nháp) để xử lý sau.\n\nBạn có muốn tách không?`
-      );
+        // 👇 THAY THẾ WINDOW.CONFIRM BẰNG MYSWAL
+        const result = await MySwal.fire({
+            title: '📦 Tách Đơn Hàng?',
+            html: `
+                <div class="text-left text-sm">
+                    <p class="mb-2">Bạn đang xóa sản phẩm: <span class="font-bold text-yellow-400">${itemToRemove.productName}</span></p>
+                    <p>Hệ thống sẽ <b>TỰ ĐỘNG TÁCH</b> dòng này sang một đơn gộp mới (Nháp) để xử lý sau thay vì xóa vĩnh viễn.</p>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Đồng ý, Tách ngay',
+            cancelButtonText: 'Hủy bỏ',
+            reverseButtons: true // Đảo vị trí nút cho thuận tay
+        });
 
-      if (confirmSplit) {
-        try {
-          // Gọi API trực tiếp tại đây như bạn yêu cầu
-          // API: POST /api/orders/split { merge_id, line_ids }
-          await api.post('/orders/split', {
-            merge_id: formData.orderNumber, // Hoặc order.id
-            line_ids: [itemToRemove.id]
-          });
+        // 👇 Kiểm tra kết quả bấm nút
+        if (result.isConfirmed) {
+            try {
+                // Hiển thị loading khi đang gọi API
+                MySwal.fire({
+                    title: 'Đang xử lý...',
+                    text: 'Vui lòng chờ trong giây lát',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        MySwal.showLoading();
+                    }
+                });
 
-          toast.success('Đã tách sản phẩm sang đơn mới thành công!');
+                // Gọi API Split
+                await api.post('/orders/split', {
+                    merge_id: formData.orderNumber,
+                    line_ids: [realId]
+                });
 
-          // Xóa khỏi UI sau khi thành công
-          setFormData(prev => ({
-            ...prev,
-            items: prev.items.filter((_, i) => i !== index)
-          }));
-        } catch (error: any) {
-          console.error("Lỗi tách đơn:", error);
-          toast.error(error.response?.data?.message || "Không thể tách đơn. Vui lòng thử lại.");
+                // Tắt loading và thông báo thành công
+                await MySwal.fire({
+                    icon: 'success',
+                    title: 'Thành công!',
+                    text: 'Sản phẩm đã được tách sang đơn mới.',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+                
+                // Cập nhật giao diện: Xóa dòng đó đi
+                setFormData(prev => ({
+                    ...prev,
+                    items: prev.items.filter((_, i) => i !== index)
+                }));
+
+            } catch (error: any) {
+                console.error("Lỗi tách đơn:", error);
+                
+                // Thông báo lỗi đẹp
+                MySwal.fire({
+                    icon: 'error',
+                    title: 'Lỗi',
+                    text: error.response?.data?.message || "Không thể tách đơn. Vui lòng thử lại."
+                });
+            }
         }
-      }
-      return; // Dừng lại, không chạy logic xóa thường
+        return; // Dừng, không chạy logic xóa thường bên dưới
     }
 
     // --- Logic xóa thường (cho đơn PO hoặc item mới thêm) ---
+    // Có thể thêm confirm nhẹ cho xóa thường nếu muốn
     setFormData(prev => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== index)
