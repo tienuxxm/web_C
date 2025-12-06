@@ -18,6 +18,6 @@ class MergeOrderItem extends Model
 
     public function orderMerged()
     {
-        return $this->belongTo(MergrOrder::class,'DocumentNo','DocumentNo');
+        return $this->belongTo(MergeOrder::class,'DocumentNo','DocumentNo');
     }
 }

@@ -60,6 +60,7 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('{order}','destroy');
     Route::get('ids',  'getAllIds');
     Route::get('{order}',  'show'); 
+    Route::post('split','split');
     Route::post ('import-multiple','importMultipleOrders');
     
 });

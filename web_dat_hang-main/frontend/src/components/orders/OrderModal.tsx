@@ -6,12 +6,13 @@ import { getCurrentUser } from '../../utils/auth';
 
 
 interface OrderItem {
+  id?: string | number;
   productId: string;
   productCode: string;
   productName: string;
   quantity: number;
   price: number;
-  color:string;
+  color: string;
 }
 interface StatusOption {
   ID: number;
@@ -19,26 +20,24 @@ interface StatusOption {
   Type: number;
 }
 interface Product {
-  id : string;
+  id: string;
   code: string;
   name: string;
   price: number;
-  barcode: string; 
-  color: string; 
-  status:string;
-  categoryId:string|number;
+  barcode: string;
+  color: string;
+  status: string;
+  categoryId: string | number;
 }
 // Trong OrderModal.tsx hoặc file types.ts nếu tách riêng
-export type PaymentStatus = 'pending'| 'paid'| 'failed'| 'refunded';
- export interface OrderPayload {
+export interface OrderPayload {
   orderDate: string;
   intended_use: string;
-  industry_id: number|string;
+  industry_id: number | string;
   supplier_name: string;
-  items: { productCode: string; quantity: number ,variant:string}[];
+  items: { productCode: string; quantity: number, variant: string }[];
   status: number;
-  status_name:string;
-  payment_status: PaymentStatus;
+  status_name: string;
   estimated_delivery: string;
   shipping: number;
   notes: string;
@@ -53,72 +52,70 @@ export interface OrderFromAPI {
   shipping: number;
   total: number;
   status: number;
-  status_name:string;
-  paymentStatus: PaymentStatus;
+  status_name: string;
   intendedUse: string;
   orderDate: string;
   estimatedDelivery: string;
   notes: string;
-  industry_id:number;
+  industry_id: number;
   items: {
+    id:  number;
     product: {
-      id:string;
+      id: string;
       code: string;
       name: string;
       price: number;
-      categoryId?:string|number;
-      color:string;
+      categoryId?: string | number;
+      color: string;
     };
     quantity: number;
   }[];
 }
 interface OrderModalProps {
-  order: OrderFromAPI | null; 
-  onSave: (order: OrderPayload) => void|Promise<void>;
+  order: OrderFromAPI | null;
+  onSave: (order: OrderPayload) => void | Promise<void>;
   onClose: () => void;
   currentUser: any; // Hoặc User type nếu bạn đã có
-  readOnly?:boolean;
+  readOnly?: boolean;
 }
-const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnly= false}) => {
+const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnly = false }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const [formData, setFormData] = useState({
-        orderNumber: '',
-        supplier_name: '',
-        items: [] as OrderItem[],
-        subtotal: 0,
-        tax:   0,
-        shipping: 0,
-        total: 0,
-        status: 1,
-        statusName:'',            
-        paymentStatus: 'pending' as PaymentStatus, 
-        intendedUse:'',
-        orderDate: new Date().toISOString().split('T')[0],
-        estimatedDelivery: '',
-        notes: ''
+    orderNumber: '',
+    supplier_name: '',
+    items: [] as OrderItem[],
+    subtotal: 0,
+    tax: 0,
+    shipping: 0,
+    total: 0,
+    status: 1,
+    statusName: '',
+    intendedUse: '',
+    orderDate: new Date().toISOString().split('T')[0],
+    estimatedDelivery: '',
+    notes: ''
   });
-  const paymentStatuses :PaymentStatus[]= ['pending', 'paid', 'failed', 'refunded'];
-  const [categories, setCategories] = useState<{id: number, name: string}[]>([]);
+  const [categories, setCategories] = useState<{ id: number, name: string }[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | number>('');
 
-    // 1. Fetch danh sách Category khi Modal mở
-    useEffect(() => {
-      const fetchCategories = async () => {
-        try {
-          // Giả sử API lấy danh mục là /categories
-          const res = await api.get('/categories'); 
-          // Map dữ liệu tùy API của bạn (ví dụ: res.data.categories)
-          setCategories(res.data.categories || []); 
-        } catch (e) {
-          console.error("Lỗi tải danh mục", e);
-        }
-      };
-      fetchCategories();
-      }, []);
-    useEffect(() => {
+  // 1. Fetch danh sách Category khi Modal mở
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        // Giả sử API lấy danh mục là /categories
+        const res = await api.get('/categories');
+        // Map dữ liệu tùy API của bạn (ví dụ: res.data.categories)
+        setCategories(res.data.categories || []);
+      } catch (e) {
+        console.error("Lỗi tải danh mục", e);
+      }
+    };
+    fetchCategories();
+  }, []);
+  useEffect(() => {
     const fetchStatuses = async () => {
       try {
         const res = await api.get('order-statuses');
@@ -129,9 +126,9 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnl
     };
     fetchStatuses();
   }, []);
-    useEffect(() => {
-      if (readOnly) return;
-      const fetchProducts = async () => {
+  useEffect(() => {
+    if (readOnly) return;
+    const fetchProducts = async () => {
       // Nếu chưa chọn danh mục thì không tải gì cả (để nhẹ máy)
       if (!selectedCategoryId) {
         setProducts([]);
@@ -147,20 +144,20 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnl
         if (order && order.items) {
           const loadedIds = new Set(availableProducts.map((p: any) => String(p.id)));
           const missingProducts = order.items
-              .filter((item) => item.product && !loadedIds.has(String(item.product.id)))
-              .map((item) => ({
-                id: item.product.id,
-                code: item.product.code,
-                name: item.product.name,
-                price: item.product.price,
-                categoryId: item.product.categoryId, // Lưu ý map thêm cái này
-                status: 'inactive',
-                barcode: '',
-                color: item.product.color
-              }));
-          
+            .filter((item) => item.product && !loadedIds.has(String(item.product.id)))
+            .map((item) => ({
+              id: item.product.id,
+              code: item.product.code,
+              name: item.product.name,
+              price: item.product.price,
+              categoryId: item.product.categoryId, // Lưu ý map thêm cái này
+              status: 'inactive',
+              barcode: '',
+              color: item.product.color
+            }));
+
           if (missingProducts.length > 0) {
-              availableProducts = [...missingProducts, ...availableProducts];
+            availableProducts = [...missingProducts, ...availableProducts];
           }
         }
 
@@ -173,103 +170,133 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnl
       }
     };
 
-      fetchProducts();
-    }, [order,readOnly,selectedCategoryId]);
+    fetchProducts();
+  }, [order, readOnly, selectedCategoryId]);
 
- useEffect(() => {
+  // Thay thế đoạn useEffect map data trong OrderModal.tsx
+
+useEffect(() => {
     if (order) {
-          const detectedCategory = order.industry_id 
-            ? String(order.industry_id) 
-            : (order.items.length > 0 ? String(order.items[0].product.categoryId) : '');
-          
-    setSelectedCategoryId(detectedCategory || '');
-        setFormData({
+      // 🔍 DEBUG 1: In ra item gốc từ API để soi
+      console.log("DATA GỐC TỪ API (Items):", order.items);
+
+      const detectedCategory = order.industry_id
+        ? String(order.industry_id)
+        : (order.items.length > 0 ? String(order.items[0].product.categoryId) : '');
+
+      setSelectedCategoryId(detectedCategory || '');
+
+      setFormData({
         orderNumber: order.orderNumber,
         supplier_name: order.supplierName ?? '',
-        items: order.items.map(it => ({
-          productId: it.product.id,
-          productCode: it.product.code,
-          productName: it.product.name,
-          quantity: it.quantity,
-          price: it.product.price,
-          color: it.product.color
-        })),
+        
+        // 👇 KHU VỰC QUAN TRỌNG NHẤT
+        items: order.items.map((it: any) => {
+           // 🔍 DEBUG 2: In ra ID của từng dòng
+           console.log(
+           
+               it.id
+           );
+
+           return {
+              id: it.id, // ✅ Gán giá trị tìm được vào đây
+              productId: it.product.id,
+              productCode: it.product.code,
+              productName: it.product.name,
+              quantity: it.quantity,
+              price: it.product.price,
+              color: it.product.color
+           };
+        }),
+        // 👆 HẾT KHU VỰC QUAN TRỌNG
+
         subtotal: order.subtotal,
         tax: order.tax,
         shipping: order.shipping,
         total: order.total,
         status: Number(order.status),
-        statusName:order.status_name,
-        paymentStatus: order.paymentStatus,
+        statusName: order.status_name,
         intendedUse: order.intendedUse,
         orderDate: order.orderDate ? order.orderDate.split('T')[0] : '',
         estimatedDelivery: order.estimatedDelivery ? order.estimatedDelivery.split('T')[0] : '',
         notes: order.notes ?? ''
       });
 
-  } else {
-    // === CHẾ ĐỘ TẠO MỚI ===
-    setSelectedCategoryId(''); // Reset danh mục
-    setProducts([]); // Reset danh sách sản phẩm
+    } else {
+      // === CHẾ ĐỘ TẠO MỚI ===
+      setSelectedCategoryId(''); 
+      setProducts([]); 
+      // Reset form data về mặc định
+      setFormData({
+        orderNumber: '',
+        supplier_name: '',
+        items: [],
+        subtotal: 0,
+        tax: 0,
+        shipping: 0,
+        total: 0,
+        status: 1,
+        statusName: '',
+        intendedUse: '',
+        orderDate: new Date().toISOString().split('T')[0],
+        estimatedDelivery: '',
+        notes: ''
+      });
+    }
+  }, [order]);
+
+
+  useEffect(() => {
+    const subtotal = formData.items.reduce(
+      (sum, item) => sum + (Number(item.quantity) * Number(item.price)), 0
+    );
+    const tax = 0;
+    const shipping = 0;
+    const total = subtotal;
+
     setFormData(prev => ({
       ...prev,
+      subtotal,
+      tax,
+      total,
+      shipping
     }));
-  }
-}, [order]);
-
-
-useEffect(() => {
-  const subtotal = formData.items.reduce(
-    (sum, item) => sum + (Number(item.quantity) * Number(item.price)), 0
-  );
-  const tax = 0;
-  const shipping=0;
-  const total = subtotal ;
-
-  setFormData(prev => ({
-    ...prev,
-    subtotal,
-    tax,
-    total,
-    shipping
-  }));
-}, [formData.items]);
+  }, [formData.items]);
 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const orderDate = new Date(formData.orderDate);
     const deliveryDate = new Date(formData.estimatedDelivery);
-  // Kiểm tra ngày hợp lệ
-      if (deliveryDate <= orderDate) {
-        toast.error("Ngày giao hàng phải sau ngày đặt hàng.");
-        return;
-      }
-      if (!selectedCategoryId) {
-        toast.error("Vui lòng chọn Ngành hàng (Category)!");
-        return;
+    // Kiểm tra ngày hợp lệ
+    if (deliveryDate <= orderDate) {
+      toast.error("Ngày giao hàng phải sau ngày đặt hàng.");
+      return;
+    }
+    if (!selectedCategoryId) {
+      toast.error("Vui lòng chọn Ngành hàng (Category)!");
+      return;
     }
     // Chỉ lấy các trường cần gửi cho BE
-    const payload :OrderPayload= {
+    const payload: OrderPayload = {
       industry_id: selectedCategoryId,
       orderDate: formData.orderDate,
       intended_use: formData.intendedUse,
       supplier_name: formData.supplier_name, // Đổi từ supplierName sang supplier_name
       items: formData.items.map(it => ({
-        variant:it.color||'',
-        productCode: it.productCode||it.productId,
+        variant: it.color || '',
+        productCode: it.productCode || it.productId,
         quantity: it.quantity
       })),
-      status_name:formData.statusName,
+      status_name: formData.statusName,
       status: formData.status, // Mặc định là 'draft' nếu không có
-      payment_status: formData.paymentStatus||'pending', // Mặc định là 'pending' nếu không có
       estimated_delivery: formData.estimatedDelivery,
       shipping: formData.shipping,
       notes: formData.notes
     };
     onSave(payload);
   };
-  
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -281,20 +308,73 @@ useEffect(() => {
 
   const addItem = () => {
     const newItem: OrderItem = {
-      productId:'',
+      productId: '',
       productCode: '',
       productName: '',
       quantity: 1,
       price: 0,
-      color:''
+      color: ''
     };
     setFormData(prev => ({
       ...prev,
       items: [...prev.items, newItem]
     }));
   };
+  
 
-  const removeItem = (index: number) => {
+  const removeItem = async (index: number) => {
+    const itemToRemove = formData.items[index];
+    // --- DEBUG LOG: Kiểm tra xem dữ liệu có đúng không ---
+    console.log("🛠 KIỂM TRA TÁCH ĐƠN:", {
+        "1. Mã đơn (MP?)": formData.orderNumber,
+        "2. Trạng thái (8?)": formData.status,
+        "3. Item ID (Có ID thật?)": itemToRemove.id,
+        "👉 Kết quả check": {
+            isMergeOrder: formData.orderNumber?.startsWith('MP'),
+            isDraft: Number(formData.status) === 8, // Ép kiểu Number cho chắc
+            hasRealId: itemToRemove.id && !String(itemToRemove.id).startsWith('temp')
+        }
+    });
+
+    // Điều kiện kích hoạt Tách đơn:
+    // 1. Đơn hàng đang mở (có ID)
+    // 2. Là đơn Gộp (Mã bắt đầu bằng MP hoặc status = 8)
+    // 3. Trạng thái là Nháp (8) - Chỉ cho tách khi đang nháp
+    // 4. Item này đã tồn tại trong DB (có ID)
+    const isMergeOrder = formData.orderNumber?.startsWith('MP');
+    const isDraft = formData.status === 8; // 8 là Type Merge/Nháp
+    const hasRealId = itemToRemove.id && !String(itemToRemove.id).startsWith('temp');
+
+    if (isMergeOrder && isDraft && hasRealId) {
+      const confirmSplit = window.confirm(
+        `📦 TÁCH ĐƠN HÀNG?\n\nBạn đang xóa "${itemToRemove.productName}" khỏi đơn gộp này.\n\nHệ thống sẽ TỰ ĐỘNG TÁCH dòng này sang một Đơn Gộp Mới (Nháp) để xử lý sau.\n\nBạn có muốn tách không?`
+      );
+
+      if (confirmSplit) {
+        try {
+          // Gọi API trực tiếp tại đây như bạn yêu cầu
+          // API: POST /api/orders/split { merge_id, line_ids }
+          await api.post('/orders/split', {
+            merge_id: formData.orderNumber, // Hoặc order.id
+            line_ids: [itemToRemove.id]
+          });
+
+          toast.success('Đã tách sản phẩm sang đơn mới thành công!');
+
+          // Xóa khỏi UI sau khi thành công
+          setFormData(prev => ({
+            ...prev,
+            items: prev.items.filter((_, i) => i !== index)
+          }));
+        } catch (error: any) {
+          console.error("Lỗi tách đơn:", error);
+          toast.error(error.response?.data?.message || "Không thể tách đơn. Vui lòng thử lại.");
+        }
+      }
+      return; // Dừng lại, không chạy logic xóa thường
+    }
+
+    // --- Logic xóa thường (cho đơn PO hoặc item mới thêm) ---
     setFormData(prev => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== index)
@@ -311,10 +391,10 @@ useEffect(() => {
             return {
               ...item,
               productId: value as string,
-              productCode: product?.code||'',
+              productCode: product?.code || '',
               productName: product?.name || '',
               price: product?.price || 0,
-              color:product?.color||''
+              color: product?.color || ''
             };
           }
           return { ...item, [field]: value };
@@ -325,9 +405,9 @@ useEffect(() => {
 
   };
   useEffect(() => {
-  if (products.length === 0 || formData.items.length === 0) return;
+    if (products.length === 0 || formData.items.length === 0) return;
 
-}, [products, formData.items]);
+  }, [products, formData.items]);
   // Thêm hàm này vào trong OrderModal component
   // Trong OrderModal.tsx
 
@@ -336,43 +416,42 @@ useEffect(() => {
     if (!allStatuses || allStatuses.length === 0) return [];
     if (!order) return allStatuses.filter(s => s.Type === 1);
     const currentStatus = Number(order.status);
-    const role = currentUser?.role?.name_role; 
-    const dept = currentUser?.department?.name_department; 
+    const role = currentUser?.role?.name_role;
+    const dept = currentUser?.department?.name_department;
 
-    console.log('👤 role:', role, '👤 dept:', dept); // Debug
     if (role === 'Administrator') {
-        return allStatuses;
+      return allStatuses;
     }
     let allowedTypes: number[] = [currentStatus]; // Luôn giữ trạng thái hiện tại
 
     // --- A. KINH DOANH (Sales) & IT ---
-    if ( role === 'Sales') {
-      if (currentStatus === 1 || currentStatus === 10|| currentStatus === 9) {
-        console.log( 'debug',allowedTypes) 
+    if (role === 'Sales') {
+      if (currentStatus === 1 || currentStatus === 10 || currentStatus === 9) {
+        console.log('debug', allowedTypes)
         allowedTypes.push(1); // Gửi lại (Mới)
       }
     }
 
     // --- B. CUNG ỨNG / HÀNH CHÍNH / IT ---
-    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam' ) {
+    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam') {
       // B1. Nhận đơn Mới (1)
       if (currentStatus === 1) {
-         allowedTypes.push(7); // Chốt
-         allowedTypes.push(10); // Trả về
+        allowedTypes.push(7); // Chốt
+        allowedTypes.push(10); // Trả về
       }
       // B2. Đã Chốt (13)
       else if (currentStatus === 7) {
-         allowedTypes.push(2);  // Gửi duyệt
-         allowedTypes.push(17); // Trả về
-         // allowedIds.push(14); // Gộp (Logic này thường nằm ở nút riêng ngoài bảng)
+        allowedTypes.push(2);  // Gửi duyệt
+        allowedTypes.push(17); // Trả về
+        // allowedIds.push(14); // Gộp (Logic này thường nằm ở nút riêng ngoài bảng)
       }
       // B3. Sếp đã duyệt (3)
       else if (currentStatus === 3) {
-         allowedTypes.push(4);  // Đang đặt hàng
+        allowedTypes.push(4);  // Đang đặt hàng
       }
       // B4. Đang đặt (4)
       else if (currentStatus === 4) {
-         allowedTypes.push(11); // Hoàn thành
+        allowedTypes.push(11); // Hoàn thành
       }
     }
 
@@ -387,18 +466,18 @@ useEffect(() => {
     // Lọc danh sách trạng thái
     const uniqueTypes = Array.from(new Set(allowedTypes));
     console.log("✅ ALLOWED TYPES:", uniqueTypes);
-    const result=allStatuses.filter(s => uniqueTypes.includes(s.Type));
+    const result = allStatuses.filter(s => uniqueTypes.includes(s.Type));
     console.log("🎯 FINAL OPTIONS:", result);
 
     return result;
   };
   // const isKinhDoanh = currentUser.department?.name_department === 'KINH_DOANH';
-  const ALLOWED_DEPARTMENTS = ['CUNG_UNG', 'HANH_CHANH'];  const isGiamDoc = currentUser.role.name_role === 'giam_doc';
+  const ALLOWED_DEPARTMENTS = ['CUNG_UNG', 'HANH_CHANH']; const isGiamDoc = currentUser.role.name_role === 'giam_doc';
   const canAddItem = ALLOWED_DEPARTMENTS.includes(currentUser?.department?.name_department);
 
-  const canEditQuantityOnly =  !readOnly&&(canAddItem || isGiamDoc);
-  
-  
+  const canEditQuantityOnly = !readOnly && (canAddItem || isGiamDoc);
+
+
 
 
 
@@ -408,7 +487,7 @@ useEffect(() => {
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-700/50">
           <h2 className="text-lg sm:text-2xl font-bold text-white">
-            { readOnly ?'View Order' : (order ? 'Edit Order' : 'Create New Order')}
+            {readOnly ? 'View Order' : (order ? 'Edit Order' : 'Create New Order')}
           </h2>
           <button
             onClick={onClose}
@@ -421,9 +500,9 @@ useEffect(() => {
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
           {/* Order Details */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {!!order && (
-                <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {!!order && (
+              <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Number</label>
                 <input
                   type="text"
@@ -437,7 +516,7 @@ useEffect(() => {
                 />
               </div>
             )}
-            
+
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Date</label>
               <input
@@ -456,18 +535,18 @@ useEffect(() => {
           <div className="space-y-4">
             <h3 className="text-base sm:text-lg font-semibold text-white">Supplier Information</h3>
             <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Supplier Name</label>
-                <input
-                  type="text"
-                  name="supplier_name"
-                  value={formData.supplier_name}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                  placeholder="Enter supplier name"
-                  disabled={ !!order}
+              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Supplier Name</label>
+              <input
+                type="text"
+                name="supplier_name"
+                value={formData.supplier_name}
+                onChange={handleChange}
+                required
+                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
+                placeholder="Enter supplier name"
+                disabled={!!order}
 
-                />
+              />
             </div>
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Intended Use</label>
@@ -479,180 +558,179 @@ useEffect(() => {
                 required
                 className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
                 placeholder="Enter Intened Use"
-                disabled={ !!order}
+                disabled={!!order}
 
               />
             </div>
           </div>
 
           {/* Dropdown Category */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-300 mb-2">Ngành hàng</label>
-          <select
-            value={selectedCategoryId}
-            onChange={(e) => {
-              // Logic đổi ngành (chỉ chạy khi tạo mới)
-              const newVal = e.target.value;
-              setSelectedCategoryId(newVal);
-              setFormData(prev => ({...prev, items: []})); // Reset items nếu đổi ngành
-            }}
-            // 👇 QUAN TRỌNG: Khóa cứng nếu đang Sửa đơn hàng (có order)
-            disabled={!!order} 
-            className={`w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white 
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-300 mb-2">Ngành hàng</label>
+            <select
+              value={selectedCategoryId}
+              onChange={(e) => {
+                // Logic đổi ngành (chỉ chạy khi tạo mới)
+                const newVal = e.target.value;
+                setSelectedCategoryId(newVal);
+                setFormData(prev => ({ ...prev, items: [] })); // Reset items nếu đổi ngành
+              }}
+              // 👇 QUAN TRỌNG: Khóa cứng nếu đang Sửa đơn hàng (có order)
+              disabled={!!order}
+              className={`w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white 
                 ${!!order ? 'opacity-60 cursor-not-allowed' : ''}`} // Thêm style cho rõ là đang khóa
-          >
-            <option value="">-- Chọn ngành hàng --</option>
-            {categories.map(cat => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
-            ))}
-          </select>
+            >
+              <option value="">-- Chọn ngành hàng --</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
 
-          
-          
-          {/* Hiển thị thông báo nhỏ nếu đang bị khóa */}
-          {!!order && (
+
+
+            {/* Hiển thị thông báo nhỏ nếu đang bị khóa */}
+            {!!order && (
               <p className="text-xs text-yellow-500 mt-1">
-                  * Không thể đổi ngành hàng khi đang sửa đơn.
+                * Không thể đổi ngành hàng khi đang sửa đơn.
               </p>
-          )}
-        </div>
-          
+            )}
+          </div>
+
 
           {/* Order Items */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base sm:text-lg font-semibold text-white">Order Items</h3>
-             {/* {canAddItem && isDraft  && !readOnly &&(
+              {/* {canAddItem && isDraft  && !readOnly &&(
               
              )} */}
               {
-                !readOnly &&(
-                   <button
-                type="button"
-                onClick={addItem}
-                disabled={!selectedCategoryId}
-                className={`flex items-center px-4 py-2 rounded-lg transition-colors ${
-                      !selectedCategoryId 
-                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Add Item</span>
-                <span className="sm:hidden">Add</span>
-              </button>
+                !readOnly && (
+                  <button
+                    type="button"
+                    onClick={addItem}
+                    disabled={!selectedCategoryId}
+                    className={`flex items-center px-4 py-2 rounded-lg transition-colors ${!selectedCategoryId
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden sm:inline">Add Item</span>
+                    <span className="sm:hidden">Add</span>
+                  </button>
                 )
               }
-            
+
 
             </div>
 
             {formData.items.map((item, index) => {
-  // --- 🛠️ PHẦN DEBUG LOGIC (Chèn vào đây) ---
-  // 1. Tìm sản phẩm dự phòng bằng Code (nếu đơn cũ chưa có ID)
-  const fallbackProduct = products.find(p => p.code === item.productCode);
-  
-  // 2. Tính toán giá trị thực tế sẽ gán vào Value của Select
-  // Ưu tiên item.productId -> nếu rỗng thì dùng ID của sản phẩm tìm thấy bằng Code -> nếu không thì rỗng
-  const currentValue = item.productId || fallbackProduct?.id || '';
+              // --- 🛠️ PHẦN DEBUG LOGIC (Chèn vào đây) ---
+              // 1. Tìm sản phẩm dự phòng bằng Code (nếu đơn cũ chưa có ID)
+              const fallbackProduct = products.find(p => p.code === item.productCode);
 
-  // 3. Kiểm tra xem giá trị này có tồn tại trong danh sách Products dropdown không
-  const isMatchFound = products.some(p => String(p.id) === String(currentValue));
+              // 2. Tính toán giá trị thực tế sẽ gán vào Value của Select
+              // Ưu tiên item.productId -> nếu rỗng thì dùng ID của sản phẩm tìm thấy bằng Code -> nếu không thì rỗng
+              const currentValue = item.productId || fallbackProduct?.id || '';
 
-  console.log(`🔍 Debug Dòng ${index + 1}:`, {
-    "1. Item Data": {
-        productId: item.productId,
-        productCode: item.productCode,
-        productName: item.productName
-    },
-    "2. Logic Value": {
-        currentValue: currentValue,
-        "Fallback tìm thấy?": fallbackProduct ? "✅ Có" : "❌ Không",
-        "ID Fallback": fallbackProduct?.id
-    },
-    "3. Kiểm tra hiển thị": {
-        "Value có trong Products list?": isMatchFound ? "✅ CÓ (Sẽ hiện tên)" : "❌ KHÔNG (Sẽ bị trắng)",
-        "Tổng SP tải về": products.length
-    }
-  });
-  // ------------------------------------------
+              // 3. Kiểm tra xem giá trị này có tồn tại trong danh sách Products dropdown không
+              const isMatchFound = products.some(p => String(p.id) === String(currentValue));
 
-  return (
-    <div key={index} className="bg-gray-800/30 rounded-xl p-3 sm:p-4">
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-        <div className="sm:col-span-5 ">
-          <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Product</label>
-          {readOnly ?(
-            <div className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base">
-              {item.productName}
-            </div>
-          ):(
-            <select
-              // Sử dụng giá trị currentValue đã tính toán ở trên
-              value={currentValue}
-              onChange={(e) => updateItem(index, 'productId', e.target.value)}
-              className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-            >
-              <option value="">Select a product</option>
-              {products.map(product => (
-                // Sử dụng ID làm Key và Value để đảm bảo duy nhất
-                <option key={product.id} value={product.id}>
-                  [{product.code}] - {product.name} {product.color ? `(${product.color})` : ''}
-                </option>
-              ))}
-            </select>
-          )}
-          
-        </div>
-        
-        {/* Các phần Quantity, Price, Delete giữ nguyên */}
-        
-        <div className="sm:col-span-2">
-          <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Quantity</label>
-          <input
-            type="number"
-            min="1"
-            value={item.quantity}
-            onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-            disabled={canEditQuantityOnly}
-            className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Price</label>
-          <input
-            type="number"
-            step="0.01"
-            value={item.price}
-            disabled
-            onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-            className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Color</label>
-          <input
-            value={item.color}
-            disabled
-            onChange={(e) => updateItem(index, 'color', parseFloat(e.target.value) )}
-            className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-          />
-        </div>
-        <div className="flex justify-center sm:col-span-1">
-          
-            <button
-              type="button"
-              onClick={() => removeItem(index)}
-              className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-         
-        </div>
-      </div>
-    </div>
-      );
-    })}
+              // console.log(`🔍 Debug Dòng ${index + 1}:`, {
+              //   "1. Item Data": {
+              //     productId: item.productId,
+              //     productCode: item.productCode,
+              //     productName: item.productName
+              //   },
+              //   "2. Logic Value": {
+              //     currentValue: currentValue,
+              //     "Fallback tìm thấy?": fallbackProduct ? "✅ Có" : "❌ Không",
+              //     "ID Fallback": fallbackProduct?.id
+              //   },
+              //   "3. Kiểm tra hiển thị": {
+              //     "Value có trong Products list?": isMatchFound ? "✅ CÓ (Sẽ hiện tên)" : "❌ KHÔNG (Sẽ bị trắng)",
+              //     "Tổng SP tải về": products.length
+              //   }
+              // });
+              // ------------------------------------------
+
+              return (
+                <div key={index} className="bg-gray-800/30 rounded-xl p-3 sm:p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+                    <div className="sm:col-span-5 ">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Product</label>
+                      {readOnly ? (
+                        <div className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base">
+                          {item.productName}
+                        </div>
+                      ) : (
+                        <select
+                          // Sử dụng giá trị currentValue đã tính toán ở trên
+                          value={currentValue}
+                          onChange={(e) => updateItem(index, 'productId', e.target.value)}
+                          className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                        >
+                          <option value="">Select a product</option>
+                          {products.map(product => (
+                            // Sử dụng ID làm Key và Value để đảm bảo duy nhất
+                            <option key={product.id} value={product.id}>
+                              [{product.code}] - {product.name} {product.color ? `(${product.color})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                    </div>
+
+                    {/* Các phần Quantity, Price, Delete giữ nguyên */}
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Quantity</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.quantity}
+                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                        disabled={canEditQuantityOnly}
+                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Price</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={item.price}
+                        disabled
+                        onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Color</label>
+                      <input
+                        value={item.color}
+                        disabled
+                        onChange={(e) => updateItem(index, 'color', parseFloat(e.target.value))}
+                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                      />
+                    </div>
+                    <div className="flex justify-center sm:col-span-1">
+
+                      <button
+                        type="button"
+                        onClick={() => removeItem(index)}
+                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* Order Summary */}
@@ -696,41 +774,25 @@ useEffect(() => {
                 onChange={(e) => {
                   const val = Number(e.target.value);
                   console.log("👉 SELECTED CHANGE:", val);
-                  setFormData(prev => ({...prev, status: val}));
-                  
+                  setFormData(prev => ({ ...prev, status: val }));
+
                   // Gợi ý User nhập Note nếu chọn Hủy hoặc Trả về
                   if (val === 5 || val === 17) {
-                      toast('Vui lòng nhập lý do vào ô Ghi chú', { icon: '📝' });
+                    toast('Vui lòng nhập lý do vào ô Ghi chú', { icon: '📝' });
                   }
                 }}
                 className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-           
+
               >/
-                
+
                 {getAvailableStatuses().map(status => {
-                  console.log("Rendering Option:", status.Name, "| Type:", status.Type, "| ID:", status.ID);
-                  return(
-                        <option key={status.ID} value={status.Type}>{status.Name.toUpperCase()}</option>
+                  return (
+                    <option key={status.ID} value={status.Type}>{status.Name.toUpperCase()}</option>
 
                   );
                 })}
               </select>
             </div>
-            {/* <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Payment Status</label>
-              <select
-                name="paymentStatus"
-                value={formData.paymentStatus}
-                onChange={handleChange}
-                disabled={ !!order}
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-              >
-                {paymentStatuses.map(status => (
-                  <option key={status} value={status}>{status.toUpperCase()}</option>
-                ))}
-              </select>
-            </div> */}
-       
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Estimated Delivery</label>
               <input
@@ -742,7 +804,7 @@ useEffect(() => {
                 className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
               />
             </div>
-         
+
           </div>
 
           {/* Notes */}
@@ -754,7 +816,7 @@ useEffect(() => {
               onChange={handleChange}
               rows={3}
               className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none text-sm sm:text-base"
-              disabled={ canEditQuantityOnly} 
+              disabled={canEditQuantityOnly}
 
               placeholder="Enter any special instructions or notes"
             />
@@ -769,14 +831,14 @@ useEffect(() => {
             >
               Cancel
             </button>
-            {!readOnly &&(
-            <button
-              type="submit"
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 text-sm sm:text-base"
-            >
-              {order ? 'Update Order' : 'Create Order'}
-            </button>
-              )}
+            {!readOnly && (
+              <button
+                type="submit"
+                className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 text-sm sm:text-base"
+              >
+                {order ? 'Update Order' : 'Create Order'}
+              </button>
+            )}
           </div>
         </form>
       </div>
