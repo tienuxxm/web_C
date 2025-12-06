@@ -64,6 +64,7 @@ class Order extends Model
     public $timestamps = false; // Bảng này dùng CreatedDate, không dùng created_at/updated_at chuẩn
 
     protected $fillable = [
+        'ID',
         'DocumentNo', 
         'PostingDate',      // Ngày chứng từ
         'ShipmentDate',     // Ngày giao hàng dự kiến
@@ -93,7 +94,10 @@ class Order extends Model
     {
         // Quan hệ 1-1 với bảng Status dựa trên cột 'Type'
         // Lưu ý: Phải filter thêm cột 'Table' = 'Order Purchasing'
-        return $this->hasOne(OrderStatus::class, 'Type', 'Status')
-                    ->where('Table', 'Order Purchasing');
+        return $this->belongsTo(OrderStatus::class, 'Status', 'Type','Name');
+    }
+    public function getStatusNameAttribute()
+    {
+        return $this->statusInfo ;
     }
 }

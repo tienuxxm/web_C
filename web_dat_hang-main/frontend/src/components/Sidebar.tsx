@@ -52,26 +52,27 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: 'Overview',
       icon: <Home className="h-5 w-5" />,
       page: 'dashboard',
-     
+      roles:[]
     },
     {
       id: 'dashboard',
       label: 'Dashboard',
       icon: <BarChart3 className="h-5 w-5" />,
       page: 'dashboard',
-     
+     roles:[]
     },
     {
       id: 'orders',
       label: 'Orders',
       icon: <ShoppingCart className="h-5 w-5" />,
       // badge: 3,
-      department: ['CUNG_UNG','KINH_DOANH','HANH_CHANH','Công nghệ thông tin (IT)'],
-      roles: ['truong_phong', 'pho_phong', 'nhan_vien_chinh_thuc','giam_doc','Administrator'],
+      // department: ['CUNG_UNG','KINH_DOANH','HANH_CHANH','Công nghệ thông tin (IT)','Cung ứng','Hành chính - Miền Nam'],
+      roles: ['truong_phong', 'pho_phong', 'nhan_vien_chinh_thuc','giam_doc','Administrator','Supply','Sales','Leader'],
       children: [
         { id: 'orders-all', label: 'All Orders', icon: <FileText className="h-4 w-4" />, page: 'orders' },
-        { id: 'orders-monthly', label: 'Monthly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMonthly' },
+        { id: 'orders-monthly', label: 'Monthly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMonthly',roles:[] },
         { id: 'orders-yearly', label: 'Yearly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersYearly' },
+        { id: 'orders-merged', label: 'Merged Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMerged' },
         { id: 'orders-completed', label: 'Completed', icon: <FileText className="h-4 w-4" />, page: 'orders',roles: [] },
         { id: 'orders-cancelled', label: 'Cancelled', icon: <FileText className="h-4 w-4" />, page: 'orders',roles: [] },
       ]

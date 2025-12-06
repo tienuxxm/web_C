@@ -183,9 +183,7 @@ class CategoryController extends Controller
 
             $categories = Category::query()
                 // 1. LỌC: Chỉ lấy danh mục mà TÔI được phép xem (Giữ bảo mật)
-                ->whereHas('users', function($q) use ($userCode) {
-                    $q->where('UserCode', $userCode);
-                })
+               
                 // 2. LOAD QUAN HỆ: Tải TOÀN BỘ user thuộc danh mục này
                 // (QUAN TRỌNG: Không được where UserCode ở đây nữa, để nó load hết mọi người)
                 ->with('users') 
@@ -202,7 +200,7 @@ class CategoryController extends Controller
                 // B. Tìm Status của CHÍNH TÔI (để hiển thị nút xanh/đỏ active)
                 // Vì danh sách users bây giờ có nhiều người, ta phải tìm đúng mình
                 $me = $cat->users->firstWhere('code', $userCode); 
-                $myStatus = $me ? $me->pivot->Status : 0;
+                $myStatus = $me ? $me->pivot->Status : 1;
 
                 return [
                     'id'          => $cat->Code,
@@ -237,11 +235,6 @@ class CategoryController extends Controller
             // 1. TÌM CATEGORY THEO ID
             $category = Category::query()
                 ->where('Code', $id) // Tìm theo Code (Vd: '001')
-                
-                // 2. BẢO MẬT: Chỉ cho xem nếu TÔI có quyền trong danh mục này
-                ->whereHas('users', function($q) use ($myUserCode) {
-                    $q->where('UserCode', $myUserCode);
-                })
                 
                 // 3. LOAD DỮ LIỆU: Tải 'users' để lấy danh sách email và status
                 ->with('users') 

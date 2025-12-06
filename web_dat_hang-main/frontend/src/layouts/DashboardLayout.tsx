@@ -11,12 +11,12 @@ import CategoriesPage from '../components/categories/CategoriesPage';
 import { Toaster } from 'react-hot-toast';
 
 
-export type Pagetype =  'dashboard' | 'orders' | 'customers' | 'products' | 'reports' | 'settings'|'ordersMonthly'|'ordersYearly'|'productsCategories';
+export type Pagetype =  'dashboard' | 'orders' | 'customers' | 'products' | 'reports' | 'settings'|'ordersMonthly'|'ordersYearly'|'productsCategories'|'ordersMerged';
 
 export default function DashboardLayout() {
   const storedUser = localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
-  const [currentPage, setCurrentPage] = useState<Pagetype>('dashboard');
+  const [currentPage, setCurrentPage] = useState<Pagetype>('orders');
 
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -43,6 +43,8 @@ export default function DashboardLayout() {
         return <CustomersPage />;
       case 'orders':
         return <OrdersPage mode ="normal"/>;
+      case 'ordersMerged':
+        return <OrdersPage mode ='merged'/>
       case 'ordersMonthly':
         return <OrdersPage mode="monthly" />;
       case 'ordersYearly':

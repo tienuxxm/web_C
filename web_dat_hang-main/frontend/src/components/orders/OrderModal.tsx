@@ -13,6 +13,11 @@ interface OrderItem {
   price: number;
   color:string;
 }
+interface StatusOption {
+  ID: number;
+  Name: string;
+  Type: number;
+}
 interface Product {
   id : string;
   code: string;
@@ -24,7 +29,6 @@ interface Product {
   categoryId:string|number;
 }
 // Trong OrderModal.tsx hoặc file types.ts nếu tách riêng
-export type OrderStatus = 'draft' | 'pending' | 'approved'| 'rejected'| 'fulfilled' | 'inactive';
 export type PaymentStatus = 'pending'| 'paid'| 'failed'| 'refunded';
  export interface OrderPayload {
   orderDate: string;
@@ -55,6 +59,7 @@ export interface OrderFromAPI {
   orderDate: string;
   estimatedDelivery: string;
   notes: string;
+  industry_id:number;
   items: {
     product: {
       id:string;
@@ -76,6 +81,7 @@ interface OrderModalProps {
 }
 const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnly= false}) => {
   const [products, setProducts] = useState<Product[]>([]);
+  const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const [formData, setFormData] = useState({
@@ -112,6 +118,17 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnl
       };
       fetchCategories();
       }, []);
+    useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const res = await api.get('order-statuses');
+        setAllStatuses(res.data);
+      } catch (error) {
+        console.error("Lỗi lấy danh sách trạng thái", error);
+      }
+    };
+    fetchStatuses();
+  }, []);
     useEffect(() => {
       if (readOnly) return;
       const fetchProducts = async () => {
@@ -160,12 +177,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnl
     }, [order,readOnly,selectedCategoryId]);
 
  useEffect(() => {
-    console.log("🔥 Order received in modal:", order);
-
     if (order) {
-          const detectedCategory = order.items.length > 0 
-          ? String(order.items[0].product.categoryId)
-          : '';
+          const detectedCategory = order.industry_id 
+            ? String(order.industry_id) 
+            : (order.items.length > 0 ? String(order.items[0].product.categoryId) : '');
           
     setSelectedCategoryId(detectedCategory || '');
         setFormData({
@@ -204,8 +219,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose ,readOnl
 
 
 useEffect(() => {
-  console.log('🔄 formData.items:', formData.items);
-
   const subtotal = formData.items.reduce(
     (sum, item) => sum + (Number(item.quantity) * Number(item.price)), 0
   );
@@ -309,36 +322,83 @@ useEffect(() => {
         return item;
       })
     }));
-    console.log("🧪 productCode value:", value, typeof value);
 
   };
   useEffect(() => {
   if (products.length === 0 || formData.items.length === 0) return;
 
-  console.log("👉 formData.items:", formData.items);
-  console.log("👉 products:", products.map(p => p.code));
 }, [products, formData.items]);
   // Thêm hàm này vào trong OrderModal component
-  const getAvailableStatuses = (order: OrderFromAPI | null): string[] => {
-    if (!order) return ['draft']; // Mới -> Chỉ có Draft
+  // Trong OrderModal.tsx
 
-    // Logic phân quyền chuyển trạng thái (copy từ OrdersPage)
-    const statusId = Number(order.status); // Đảm bảo status là số để so sánh
-    
-    // Ví dụ logic đơn giản (bạn có thể copy logic full từ OrdersPage qua)
-    if (statusId === 1) return ['draft', 'pending']; // Mới -> Chờ duyệt
-    if (statusId === 2) return ['pending', 'approved', 'rejected']; // Chờ duyệt -> Duyệt/Từ chối
-    
-    // Nếu chưa có logic cụ thể, trả về status hiện tại và các status tiếp theo hợp lý
-    return ['draft', 'pending', 'approved', 'rejected', 'fulfilled'];
+  const getAvailableStatuses = () => {
+    // Nếu tạo mới -> Chỉ có 1 trạng thái là "Mới"
+    if (!allStatuses || allStatuses.length === 0) return [];
+    if (!order) return allStatuses.filter(s => s.Type === 1);
+    const currentStatus = Number(order.status);
+    const role = currentUser?.role?.name_role; 
+    const dept = currentUser?.department?.name_department; 
+
+    console.log('👤 role:', role, '👤 dept:', dept); // Debug
+    if (role === 'Administrator') {
+        return allStatuses;
+    }
+    let allowedTypes: number[] = [currentStatus]; // Luôn giữ trạng thái hiện tại
+
+    // --- A. KINH DOANH (Sales) & IT ---
+    if ( role === 'Sales') {
+      if (currentStatus === 1 || currentStatus === 10|| currentStatus === 9) {
+        console.log( 'debug',allowedTypes) 
+        allowedTypes.push(1); // Gửi lại (Mới)
+      }
+    }
+
+    // --- B. CUNG ỨNG / HÀNH CHÍNH / IT ---
+    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam' ) {
+      // B1. Nhận đơn Mới (1)
+      if (currentStatus === 1) {
+         allowedTypes.push(7); // Chốt
+         allowedTypes.push(10); // Trả về
+      }
+      // B2. Đã Chốt (13)
+      else if (currentStatus === 7) {
+         allowedTypes.push(2);  // Gửi duyệt
+         allowedTypes.push(17); // Trả về
+         // allowedIds.push(14); // Gộp (Logic này thường nằm ở nút riêng ngoài bảng)
+      }
+      // B3. Sếp đã duyệt (3)
+      else if (currentStatus === 3) {
+         allowedTypes.push(4);  // Đang đặt hàng
+      }
+      // B4. Đang đặt (4)
+      else if (currentStatus === 4) {
+         allowedTypes.push(11); // Hoàn thành
+      }
+    }
+
+    // --- C. GIÁM ĐỐC (CEO) ---
+    else if (role === 'Leader') {
+      if (currentStatus === 8) {
+        allowedTypes.push(3); // Duyệt
+        allowedTypes.push(5); // Từ chối
+      }
+    }
+
+    // Lọc danh sách trạng thái
+    const uniqueTypes = Array.from(new Set(allowedTypes));
+    console.log("✅ ALLOWED TYPES:", uniqueTypes);
+    const result=allStatuses.filter(s => uniqueTypes.includes(s.Type));
+    console.log("🎯 FINAL OPTIONS:", result);
+
+    return result;
   };
   // const isKinhDoanh = currentUser.department?.name_department === 'KINH_DOANH';
   const ALLOWED_DEPARTMENTS = ['CUNG_UNG', 'HANH_CHANH'];  const isGiamDoc = currentUser.role.name_role === 'giam_doc';
   const canAddItem = ALLOWED_DEPARTMENTS.includes(currentUser?.department?.name_department);
 
   const canEditQuantityOnly =  !readOnly&&(canAddItem || isGiamDoc);
-
-
+  
+  
 
 
 
@@ -361,20 +421,23 @@ useEffect(() => {
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
           {/* Order Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Number</label>
-              <input
-                type="text"
-                name="orderNumber"
-                value={formData.orderNumber}
-                onChange={handleChange}
-                required
-                disabled // Không cho sửa nếu là đơn đã có
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                placeholder="Enter order number"
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {!!order && (
+                <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Number</label>
+                <input
+                  type="text"
+                  name="orderNumber"
+                  value={formData.orderNumber}
+                  onChange={handleChange}
+                  required
+                  disabled // Không cho sửa nếu là đơn đã có
+                  className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
+                  placeholder="Enter order number"
+                />
+              </div>
+            )}
+            
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Date</label>
               <input
@@ -443,6 +506,8 @@ useEffect(() => {
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
           </select>
+
+          
           
           {/* Hiển thị thông báo nhỏ nếu đang bị khóa */}
           {!!order && (
@@ -460,8 +525,9 @@ useEffect(() => {
              {/* {canAddItem && isDraft  && !readOnly &&(
               
              )} */}
-
-             <button
+              {
+                !readOnly &&(
+                   <button
                 type="button"
                 onClick={addItem}
                 disabled={!selectedCategoryId}
@@ -475,6 +541,9 @@ useEffect(() => {
                 <span className="hidden sm:inline">Add Item</span>
                 <span className="sm:hidden">Add</span>
               </button>
+                )
+              }
+            
 
             </div>
 
@@ -510,7 +579,7 @@ useEffect(() => {
 
   return (
     <div key={index} className="bg-gray-800/30 rounded-xl p-3 sm:p-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-12 gap-4 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
         <div className="sm:col-span-5 ">
           <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Product</label>
           {readOnly ?(
@@ -624,14 +693,27 @@ useEffect(() => {
               <select
                 name="status"
                 value={formData.status}
-                onChange={handleChange}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  console.log("👉 SELECTED CHANGE:", val);
+                  setFormData(prev => ({...prev, status: val}));
+                  
+                  // Gợi ý User nhập Note nếu chọn Hủy hoặc Trả về
+                  if (val === 5 || val === 17) {
+                      toast('Vui lòng nhập lý do vào ô Ghi chú', { icon: '📝' });
+                  }
+                }}
                 className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
            
               >/
                 
-                {getAvailableStatuses(order).map(status => (
-                  <option key={status} value={status}>{status.toUpperCase()}</option>
-                ))}
+                {getAvailableStatuses().map(status => {
+                  console.log("Rendering Option:", status.Name, "| Type:", status.Type, "| ID:", status.ID);
+                  return(
+                        <option key={status.ID} value={status.Type}>{status.Name.toUpperCase()}</option>
+
+                  );
+                })}
               </select>
             </div>
             {/* <div>

@@ -6,12 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class Role extends Model
 {
-    protected $fillable = [
-        'name_role',
-    ];
+    protected $table = 'API$Roles'; // Tên bảng trong DB
+    protected $primaryKey = 'ID';   // Khóa chính
+    public $timestamps = false;     // Tắt timestamp mặc định của Laravel
 
-    public function users()
-    {
-        return $this->hasMany(User::class);
-    }
+    protected $fillable = ['Name', 'NormalizedName', 'Status'];
 }

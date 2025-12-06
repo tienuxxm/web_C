@@ -13,11 +13,7 @@ export default function AuthPage() {
   /* ---- LOGIN ---- */
   /* ---- LOGIN ---- */
   const handleLogin = async (email: string, password: string) => {
-    try {
-        // DEBUG 1: Log dữ liệu gửi đi
-        console.log('--- [DEBUG] GỬI YÊU CẦU LOGIN ---');
-        console.log('Email:', email);
-        console.log('Password:', password);
+    try {       
 
       const { data } = await api.post('/login', { email, password });
 

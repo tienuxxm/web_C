@@ -6,25 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 
 class OrderItem extends Model
 {
-    // public $timestamps = false;
-    // protected $fillable = [
-    //     'order_id',
-    //     'product_id',
-    //     'quantity',
-    //     'unit_price',
-    //     'product_name',
-    //     'line_total',
-    // ];
-    // public function order()   { return $this->belongsTo(Order::class); }
-    // public function product() 
-    // { 
-    //     return $this->belongsTo(Product::class); 
-    // }
+    
     protected $connection = 'sqlsrv';
     protected $table = 'dbo.API$Purchase Line';
     public $timestamps = false;
 
     protected $fillable = [
+        'ID',
         'DocumentNo', 
         'Line',           // Line No (Số dòng)
         'PostingDate',    // Ngày tạo dòng
@@ -48,6 +36,11 @@ class OrderItem extends Model
     {
         // Nếu trong DB có cột Amount thì dùng, không thì tính: Price * Quantity
         return $this->attributes['Price'] * $this->attributes['Quantity'];
+    }
+    public function product()
+    {
+        // Liên kết thông qua Mã sản phẩm (ItemCode)
+        return $this->belongsTo(Product::class, 'ItemCode', 'code');
     }
 }
 

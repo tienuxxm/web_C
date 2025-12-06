@@ -10,6 +10,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\OrderController;         
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\MergeOrderController;
 
 /* ---------- PUBLIC ---------- */
 Route::post('register', [AuthController::class, 'register']);
@@ -44,21 +45,27 @@ Route::middleware('auth:api')->group(function () {
 
 
     /* Orders */
-    
+    Route::get('order-statuses', [OrderController::class, 'getStatuses']);
+
     Route::prefix('orders')->controller(OrderController::class)->group(function () {
     Route::get('search', 'search');
     Route::get('merged-by-month', 'mergedByMonth'); // Đưa trước
     Route::get('merged-by-year', 'mergedByYear');   // Thêm route cho yearly
-    Route::patch('merge',         'combine');  
+    Route::post('merge',         'merge');  
     Route::get('stats','stats');
      // Đưa trước
     Route::get('/',        'index');   
     Route::post('/',       'store');
     Route::match(['put', 'patch'], '{order}', 'update');
     Route::delete('{order}','destroy');
+    Route::get('ids',  'getAllIds');
     Route::get('{order}',  'show'); 
     Route::post ('import-multiple','importMultipleOrders');
+    
 });
+    Route::get('/merge-orders/{id}',[MergeOrderController::class,'show']);
+    Route::put('merge-orders/{id}',[MergeOrderController::class,'update']);
+    Route::get('merge-orders', [MergeOrderController::class, 'index']);
     Route::post('/export-merged-orders-multi-months', [ExportController::class, 'exportMergedOrdersMultipleMonths']);
     Route::post('/export-merged-orders-multi-years', [ExportController::class, 'exportMergedOrdersMultipleYears']);
     Route::get('/notifications', [NotificationController::class, 'index']);

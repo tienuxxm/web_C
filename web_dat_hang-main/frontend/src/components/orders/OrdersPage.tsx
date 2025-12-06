@@ -1,8 +1,8 @@
 import React, { useState ,useEffect,useMemo,useRef} from 'react';
-import { Plus, Search, Filter, Edit, Trash2, Eye, Package, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Plus, Search, Filter, Edit, Trash2, Eye, Package, Clock, CheckCircle, XCircle, AlertCircle,GitMerge } from 'lucide-react';
 import api from '../../services/api';
 
-import { OrderPayload, OrderStatus, PaymentStatus,OrderFromAPI } from './OrderModal';
+import { OrderPayload,  PaymentStatus,OrderFromAPI } from './OrderModal';
 import OrderModal from './OrderModal'; // 👈 Nếu OrderModal.tsx nằm cùng thư mục
 
 import { getCurrentUser } from '../../utils/auth';
@@ -17,6 +17,12 @@ interface OrderItem {
   quantity: number;
   price: number;
   color:string;
+}
+
+interface StatusOption {
+  ID: number;
+  Name: string;
+  Type: number;
 }
 
 interface Order {
@@ -39,10 +45,8 @@ interface Order {
 }
 
 interface OrdersPageProps {
-  mode: 'normal' | 'monthly' | 'yearly';
+  mode: 'normal' | 'monthly' | 'yearly'|'merged';
 }
-
-
 
 
 
@@ -61,18 +65,10 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode }) => {
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+    const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
+  
  
-  const mapStatus = (statusId: number): OrderStatus => {
-    switch (statusId) {
-      case 0: return 'draft';     // 0: Nháp
-      case 1: return 'pending';   // 1: Chờ duyệt (Released)
-      case 2: return 'approved';  // 2: Đã duyệt
-      case 3: return 'rejected';  // 3: Từ chối
-      default: return 'pending';  // Mặc định
-    }
-  };
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -83,39 +79,51 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode }) => {
   const fetchOrders = async () => {
     setLoading(true);
     try {
+      // 👇 1. QUYẾT ĐỊNH GỌI API NÀO DỰA TRÊN MODE
+      // Nếu mode là 'merged' -> gọi /merge-orders
+      // Ngược lại (normal, monthly...) -> gọi /orders
+      const endpoint = mode === 'merged' ? '/merge-orders' : '/orders';
+
       const params = {
-        page,
+        page, // Giữ nguyên state page của bạn
         q: search,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
+        status: selectedStatus !== 'all' ? selectedStatus : undefined,
+        limit: 6 // Nên thêm limit rõ ràng
       };
       
-      const res = await api.get('/orders', { params });
-      console.log("🔍 API Response Raw:", res.data.data[0]);
-      // LOGIC MAPPING QUAN TRỌNG: Backend (snake_case) -> Frontend (camelCase)
+      // 👇 2. Gọi dynamic endpoint
+      const res = await api.get(endpoint, { params });
+      
+      console.log(`🔍 API Response Raw (${mode}):`, res.data.data[0]);
+
+      // LOGIC MAPPING (Giữ nguyên code của bạn)
+      // Lưu ý: MergeOrderController ở Backend phải trả về keys giống hệt (snake_case)
       const mappedOrders: Order[] = res.data.data.map((o: any) => ({
-        id: o.id,
-        orderNumber: o.order_number,      // Map: order_number -> orderNumber
-        supplier_name: o.supplier_name,    // Map: supplier_name -> supplierName
-        customerName: o.customer_name,    // Map: customer_name -> customerName
-        intendedUse: o.intended_use,      // Map: intended_use -> intendedUse
-        total: o.total_amount,      // Map: total_amount -> totalAmount
-        status: Number(o.status),      // Map: 1 -> 'pending'
+        id: o.id, // Với Merge Order thì đây là DocumentNo (MP...)
+        orderNumber: o.order_number,      
+        supplier_name: o.supplier_name || 'N/A', // Merge có thể không có supplier, thêm fallback
+        customerName: o.customer_name,    
+        intendedUse: o.intended_use,      
+        total: o.total_amount || o.total, // Backend có thể trả về total hoặc total_amount
+        status: Number(o.status),      
         status_name: o.status_name,
-        orderDate: o.created_at,          // Map: created_at -> orderDate
+        orderDate: o.created_at || o.order_date, // Fallback nếu tên trường khác nhau
         itemsCount: o.items_count,
         
-        // Map Items bên trong
+        // Map Items
         items: o.items ? o.items.map((i: any) => ({
+          id: i.id, // Quan trọng cho chức năng Tách/Xóa dòng Merge
           productCode: i.product_code,
           productName: i.product_name,
           quantity: i.quantity,
-          price: i.price||0,
-          total: i.total
+          price: i.price || 0,
+          total: i.total || (i.quantity * i.price)
         })) : []
       }));
 
       setOrders(mappedOrders);
-      setLastPage(res.data.last_page); // Cập nhật số trang cuối
+      setLastPage(res.data.last_page); 
+      
     } catch (error) {
       console.error("Failed to fetch orders", error);
       toast.error("Không thể tải danh sách đơn hàng");
@@ -147,7 +155,6 @@ const loadStats = async () => {
   const [editingOrder, setEditingOrder] = useState<OrderFromAPI | null>(null);
   const [readOnlyMode, setReadOnlyMode] = useState(false);
 
-  const statuses = ['all', 'draft', 'pending', 'approved', 'rejected', 'fulfilled', 'inactive'];
   const paymentStatuses = ['all', 'pending', 'paid', 'failed', 'refunded'];
 
  const filteredOrders = useMemo(() => {
@@ -160,19 +167,8 @@ const loadStats = async () => {
           o.supplier_name.toLowerCase().includes(q)
         );
       }
-
-      // status filter
-      // if (selectedStatus !== 'all') {
-      //   temp = temp.filter(o => o.status === selectedStatus);
-      // }
-
-      // payment filter
-      if (selectedPaymentStatus !== 'all') {
-        temp = temp.filter(o => o.paymentStatus === selectedPaymentStatus);
-      }
-
       return temp;
-    }, [orders, search, selectedStatus, selectedPaymentStatus]);
+    }, [orders, search]);
 
 
 
@@ -208,97 +204,71 @@ const loadStats = async () => {
         return 'text-blue-400 bg-blue-500/10 border-blue-500/30';
       case 3: // Đã duyệt (Approved)
       case 7: // Chốt
-      case 13: // Chốt (Duplicate?)
         return 'text-purple-400 bg-purple-500/10 border-purple-500/30';
       case 4: // Đang đặt hàng
       case 8: // Merge
         return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';  
       case 9:
-      case 15:
+      case 11:
         return 'text-green-400 bg-green-500/10 border-green-500/30';
       case 5:
         return 'text-red-400 bg-red-500/10 border-red-500/30';
       default:
-      return 'text-gray-500 bg-gray-400/10 border-gray-400/30';
+        return 'text-gray-500 bg-gray-400/10 border-gray-400/30';
     }
   };
-
-  // const getPaymentStatusColor = (status: Order['paymentStatus']) => {
-  //   switch (status) {
-  //     case 'pending':
-  //       return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
-  //     case 'paid':
-  //       return 'text-green-400 bg-green-500/10 border-green-500/30';
-  //     case 'failed':
-  //       return 'text-red-400 bg-red-500/10 border-red-500/30';
-  //     case 'refunded':
-  //       return 'text-gray-400 bg-gray-500/10 border-gray-500/30';
-  //   }
-  // };
 
   const handleAddOrder = () => {
     setEditingOrder(null);
     setReadOnlyMode(false);
     setShowModal(true);
   };
-  // const canEditOrder = (order: Order): boolean => {
-  //   // const status = order.status;
 
-  //   // const role = currentUser.role?.name_role;
-  //   // const dept = currentUser.department?.name_department;
+  const handleEditOrder = async (order: Order,readOnly =false) => {
+      try {
+        // 👇 1. KIỂM TRA MÃ ĐƠN (Phân luồng API)
+      const orderId = order.id || order.orderNumber;
+      const isMergeOrder = orderId?.toString().startsWith('MP'); // Check tiền tố MP
+      
+      // Nếu là MP -> Gọi merge-orders, Nếu là PO -> Gọi orders
+      const url = isMergeOrder 
+          ? `/merge-orders/${orderId}` 
+          : `/orders/${orderId}`;
+          const res = await api.get(url);
+        const apiOrder = res.data.order;
 
-  //   // const isGD = role === 'giam_doc';
-  //   // const isKD = dept === 'KINH_DOANH';
-  //   // const isCU = dept === 'CUNG_UNG';
-  //   // const isManager = ['truong_phong', 'pho_phong'].includes(role);
-  //   // const isEmployee = role === 'nhan_vien_chinh_thuc';
-
-  //   // if (isGD) return status === 'approved';
-  //   // if (isKD) {
-  //   //   if (isManager) return true;
-  //   //   if (isEmployee) return status === 'draft';
-  //   // }
-  //   // if (isCU) return ['draft', 'pending','rejected'].includes(status);
-  //   // return false;
-  // };
-
-
-const handleEditOrder = async (order: Order,readOnly =false) => {
-    try {
-      const res = await api.get(`/orders/${order.id}`);
-      const apiOrder = res.data.order;
-
-      const orderFromAPI: OrderFromAPI = {
-        ...apiOrder,
-        orderNumber: apiOrder.order_number,
-        supplierName: apiOrder.supplier_name ?? '',
-        paymentStatus: apiOrder.payment_status,
-        intendedUse: apiOrder.intended_use,
-        orderDate: apiOrder.order_date,
-        estimatedDelivery: apiOrder.estimated_delivery ?? '',
-        notes: apiOrder.notes ?? '',
-        subtotal: Number(apiOrder.subtotal),
-        tax: Number(apiOrder.tax),
-        shipping: Number(apiOrder.shipping),
-        total: Number(apiOrder.total_amount),
-        items: apiOrder.items.map((it: any) => ({
-          product: {
-            code: it.product?.code || '',
-            name: it.product?.name || '',
-            price: Number(it.product?.price || 0),
-            color:it.product?.color,
-          },
-          quantity: Number(it.quantity)
-        }))
-      };
-      setReadOnlyMode(readOnly);
-      setEditingOrder(orderFromAPI);
-      setShowModal(true);
-      toast.success('Đơn hàng đã được tải thành công!');
-    } catch (err) {
-      toast.error('Không thể tải đơn hàng từ server');
-    }
-  };
+        const orderFromAPI: OrderFromAPI = {
+          ...apiOrder,
+          orderNumber: apiOrder.order_number,
+          supplierName: apiOrder.supplier_name ?? '',
+          paymentStatus: apiOrder.payment_status,
+          intendedUse: apiOrder.intended_use,
+          orderDate: apiOrder.order_date,
+          estimatedDelivery: apiOrder.estimated_delivery ?? '',
+          notes: apiOrder.notes ?? '',
+          subtotal: Number(apiOrder.subtotal),
+          tax: Number(apiOrder.tax),
+          shipping: Number(apiOrder.shipping),
+          total: Number(apiOrder.total_amount),
+          items: apiOrder.items.map((it: any) => ({
+            product: {
+              id:it.product.id||'',
+              code: it.product?.code || '',
+              name: it.product?.name || '',
+              price: Number(it.product?.price || 0),
+              color:it.product?.color,
+            },
+            quantity: Number(it.quantity)
+          }))
+        };
+        setReadOnlyMode(readOnly);
+        setEditingOrder(orderFromAPI);
+        setShowModal(true);
+        toast.success('Đơn hàng đã được tải thành công!');
+      } catch (err) {
+        toast.error('Không thể tải đơn hàng từ server');
+      }
+    };
  
 
   const handleDeleteOrder = async (order: Order) => {
@@ -350,69 +320,117 @@ function mapOrderFromApi(o: any): Order {
 
 
   const handleSaveOrder = async (orderData: OrderPayload) => {
-  if (editingOrder) {
-    // === CẬP NHẬT ĐƠN HÀNG ===
-    try {
-      const res = await api.put(`/orders/${editingOrder.id}`, orderData);
-      const updated = mapOrderFromApi(res.data.order);
-      setOrders(orders.map(o => (o.id === updated.id ? updated : o)));
-      setShowModal(false);
-      toast.success('Cập nhật đơn hàng thành công!');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Cập nhật đơn hàng thất bại');
-    }
-  } else {
-    // === TẠO MỚI ĐƠN HÀNG ===
-    try {
-      const payload = {
-        orderDate: orderData.orderDate,
-        supplier_name: orderData.supplier_name,
-        industry_id: orderData.industry_id,
-        intended_use: orderData.intended_use,
-        items: orderData.items.map(it => ({
-          productCode: it.productCode,
-          quantity: it.quantity,
-          color:it.variant
-        })),
-        status: orderData.status,
-        payment_status: orderData.payment_status,
-        estimated_delivery: orderData.estimated_delivery,
-        shipping: orderData.shipping,
-        notes: orderData.notes,
-      };
+    // 1. TRƯỜNG HỢP CẬP NHẬT (UPDATE)
+    if (editingOrder) {
+      try {
+        // 👇 LOGIC PHÂN LUỒNG API: Kiểm tra mã đơn để gọi đúng đường dẫn
+        const isMergeOrder = editingOrder.orderNumber.startsWith('MP') || editingOrder.orderNumber.startsWith('MP');
+        const url = isMergeOrder 
+            ? `/merge-orders/${editingOrder.orderNumber}` 
+            : `/orders/${editingOrder.orderNumber}`;
 
-      const res = await api.post('/orders', payload);
-      const newOrder = mapOrderFromApi(res.data.order);
+        const res = await api.put(url, orderData);
+        
+        // Cách an toàn nhất: Load lại danh sách để đảm bảo dữ liệu đồng bộ
+        // (Thay vì map thủ công dễ sai sót)
+        fetchOrders(); 
+        
+        setShowModal(false);
+        toast.success('Cập nhật đơn hàng thành công!');
+      } catch (err: any) {
+        console.error(err);
+        toast.error(err.response?.data?.message || 'Cập nhật đơn hàng thất bại');
+      }
+    } 
+    
+    // 2. TRƯỜNG HỢP TẠO MỚI (CREATE)
+    else {
+      try {
+        // Chuẩn hóa payload trước khi gửi
+        const payload = {
+          orderDate: orderData.orderDate,
+          supplier_name: orderData.supplier_name,
+          industry_id: orderData.industry_id,
+          intended_use: orderData.intended_use,
+          status: orderData.status,
+          payment_status: orderData.payment_status,
+          estimated_delivery: orderData.estimated_delivery,
+          shipping: orderData.shipping,
+          notes: orderData.notes,
+          items: orderData.items.map(it => ({
+            productCode: it.productCode,
+            quantity: it.quantity,
+            // Backend ưu tiên 'variant', nhưng cũng nhận 'color'
+            // Gửi cả 2 hoặc 'variant' cho chuẩn logic mới
+            color: it.variant || '', 
+          })),
+        };
 
-      // Cập nhật danh sách (có thể prepend vào đầu hoặc gọi lại GET)
-      setOrders([newOrder, ...orders]);
-      setShowModal(false);
-      toast.success('Tạo đơn hàng thành công!');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Tạo đơn hàng thất bại');
+        // Tạo mới thì LUÔN là đơn thường (/orders)
+        await api.post('/orders', payload);
+
+        fetchOrders(); // Load lại danh sách
+        setShowModal(false);
+        toast.success('Tạo đơn hàng thành công!');
+      } catch (err: any) {
+        console.error(err);
+        toast.error(err.response?.data?.message || 'Tạo đơn hàng thất bại');
+      }
     }
-  }
   };
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrders(prev => 
+      prev.includes(orderId) 
+        ? prev.filter(id => id !== orderId) 
+        : [...prev, orderId]
+    );
+  };
+  const handleSelectAll = async () => {
+    // 1. Nếu đang chọn hết (hoặc chọn một phần) -> Bỏ chọn tất cả (Reset về 0)
+    if (selectedOrders.length > 0) {
+      setSelectedOrders([]);
+      return;
+    }
 
-  const toggleOrderSelection = (id: string) => {
-        setSelectedOrders(prev =>
-          prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-        );
-      };
-    const handleMergeOrders = async () => {
-      try {
-        const res = await api.patch('/orders/merge', {
-          order_ids: selectedOrders,
-        });
+    // 2. Nếu chưa chọn gì -> Gọi API lấy TẤT CẢ ID đơn "Chốt"
+    try {
+      setIsSelectingAll(true); // Bật loading
+      
+      // Gọi API vừa tạo, truyền status=13 (Chốt)
+      const res = await api.get('/orders/ids?status=7'); 
+      
+      // Backend trả về mảng: ['PO1', 'PO2', 'PO3'...] -> Set thẳng vào state
+      setSelectedOrders(res.data);
+      
+      toast.success(`Đã chọn toàn bộ ${res.data.length} đơn hàng "Chốt" trong hệ thống.`);
+    } catch (error) {
+      toast.error("Lỗi khi lấy danh sách ID.");
+    } finally {
+      setIsSelectingAll(false); // Tắt loading
+    }
+  };
 
-        toast.success('Gộp đơn thành công!');
-        setSelectedOrders([]);
-        fetchOrders(); // hoặc fetchMergedOrders nếu đang xem danh sách gộp
-      } catch (err: any) {
-        toast.error(err.response?.data?.message || 'Gộp đơn thất bại');
-      }
-    };
+  // Logic hiển thị Checkbox Header (Checked khi số lượng chọn > 0 và bằng tổng số đơn hợp lệ)
+  // Lưu ý: Logic này hơi khó vì 'orders' chỉ là 1 trang.
+  // Ta dùng logic đơn giản: Nếu selectedOrders.length > 0 thì coi như đang checked
+  const isHeaderChecked = selectedOrders.length > 0;
+   // 4. Hàm gọi API Gộp (Như đã bàn trước đó)
+  const handleMergeOrders = async () => {
+    
+    
+    if(!confirm(`Bạn có chắc muốn gộp ${selectedOrders.length} đơn này không?`)) return;
+
+    try {
+      await api.post('/orders/merge', { order_ids: selectedOrders });
+      toast.success("Gộp đơn thành công!");
+      setSelectedOrders([]); // Reset sau khi gộp
+      fetchOrders(); // Load lại dữ liệu
+    } catch (error) {
+      toast.error("Gộp đơn thất bại");
+    }
+  };
   const handleExportOrders = async () => {
     try {
       const res = await api.post(
@@ -564,37 +582,6 @@ const handleExportSelectedYears = async () => {
 const [pendingOrders, setPendingOrders] = useState(0);
 const [processingOrders, setProcessingOrders] = useState(0);
 
-// useEffect(() => {
-//   if (!currentUser || !orders) return;
-
-//   const statusCount = {
-//     pending: 0,
-//     processing: 0,
-//   };
-
-//   const department = currentUser?.department?.name_department;
-//   const role = currentUser?.role?.name_role;
-  
-
-//   orders.forEach(order => {
-//     const status = order.status;
-
-//     if (department === 'KINH_DOANH') {
-//       if (status === 'draft') statusCount.pending++;
-//       if (status === 'pending') statusCount.processing++;
-//     } else if (department === 'CUNG_UNG') {
-//       if (status === 'pending') statusCount.pending++;
-//       if (status === 'approved') statusCount.processing++;
-//     } else if (role === 'giam_doc') {
-//       if (status === 'approved') statusCount.pending++;
-//       if (status === 'fulfilled') statusCount.processing++;
-//     }
-//   });
-
-
-//   setPendingOrders(statusCount.pending);
-//   setProcessingOrders(statusCount.processing);
-// }, [currentUser, orders]);
 const role = currentUser?.role?.name_role;
 const dept = currentUser?.department?.name_department;
 
@@ -620,10 +607,20 @@ useEffect(() => {
     setSearch(initialSearch);
   }
 }, [initialSearch]);
-
+useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const res = await api.get('order-statuses');
+        setAllStatuses(res.data);
+      } catch (error) {
+        console.error("Lỗi lấy danh sách trạng thái", error);
+      }
+    };
+    fetchStatuses();
+  }, []);
 useEffect(() => {
   fetchOrders();
-}, [search, page]);
+}, [search, page,selectedStatus,mode]);
 
 
   const renderPagination = () => {
@@ -649,21 +646,24 @@ useEffect(() => {
 
   return rangeWithDots.map((pageNum, index) => (
     pageNum === '...' ? (
-      <span key={`dots-${index}`} className="px-3 py-1 text-gray-400">...</span>
-    ) : (
-      <button
-        key={pageNum}
-        onClick={() => setPage(Number(pageNum))}
-        className={`px-3 py-1 rounded text-sm ${
-          pageNum === page ? 'bg-blue-600 text-white' : 'bg-gray-800/50 text-gray-300'
-        }`}
-      >
-        {pageNum}
-      </button>
-    )
-  ));
-};
-
+          <span key={`dots-${index}`} className="px-3 py-1 text-gray-400">...</span>
+        ) : (
+          <button
+            key={pageNum}
+            onClick={() => setPage(Number(pageNum))}
+            className={`px-3 py-1 rounded text-sm ${
+              pageNum === page ? 'bg-blue-600 text-white' : 'bg-gray-800/50 text-gray-300'
+            }`}
+          >
+            {pageNum}
+          </button>
+        )
+      ));
+    };
+    const STATUS_CHOT =7;
+    const eligibleOrders = orders.filter(o => Number(o.status) === STATUS_CHOT);
+    const showMergeButton = mode === 'normal' && selectedOrders.length > 0;
+    const showCheckbox = mode === 'normal' ;
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -740,21 +740,22 @@ useEffect(() => {
               className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
             />
           </div>
-          {selectedOrders.length > 0 && (
-          <div className='flex items-center space-x-4'>
+          {showMergeButton && (
+          <div className='flex items-center space-x-4 mb-4 animate-fade-in-up'>
             <button
               onClick={handleMergeOrders}
             className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
             >
+              <GitMerge className="h-5 w-5" />
               <span className="hidden sm:inline">Gộp {selectedOrders.length} đơn đã chọn</span>
               <span className="sm:hidden">Merge ({selectedOrders.length})</span>
             </button>
-            <button
+            {/* <button
               onClick={handleExportOrders}
               className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
             >
               Export
-            </button>
+            </button> */}
           </div>
         )}
           {/* Filters */}
@@ -774,12 +775,21 @@ useEffect(() => {
             </button>
             <select
               value={selectedStatus}
-              onChange={e => setSelectedStatus(e.target.value)}
+              onChange={e => {setSelectedStatus(e.target.value);
+                setPage(1);
+              }}
               className="px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
             >
-              {statuses.map(status => (
-                <option key={status} value={status}>
-                  {status === 'all' ? 'All Status' : status.toUpperCase()}
+              {/* 1. Thêm Option mặc định "All" thủ công */}
+              <option value="all">All Status</option>
+
+              {/* 2. Map dữ liệu từ API */}
+              {allStatuses.map(status => (
+                <option 
+                    key={status.ID} 
+                    value={status.Type} // ⚠️ Lưu ý: Dùng Type để lọc vì DB lưu theo Type
+                >
+                  {status.Name} {/* Hiển thị tên tiếng Việt từ DB (Mới, Chốt...) */}
                 </option>
               ))}
             </select>
@@ -799,12 +809,27 @@ useEffect(() => {
         </div>
       </div>
       {/* Orders Table */}
-      {mode === 'normal' && ( 
+       
       <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl overflow-hidden overflow-x-auto">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
+           
             <thead className="bg-gray-800/50 border-b border-gray-700/50">
               <tr>
+
+                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm w-12">                   
+                {showCheckbox &&  eligibleOrders.length>0 &&(
+                    <input
+                    type="checkbox"
+                    checked={isHeaderChecked}
+                    onChange={handleSelectAll}
+                    className="flex items-center gap-2 form-checkbox text-blue-500 h-6 w-6 rounded bg-gray-700 border-gray-600 focus:ring-blue-500"                
+                />
+                )}
+
+                
+                </th>
+
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Order</th>
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Supplier</th>
                 <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Items</th>
@@ -816,28 +841,25 @@ useEffect(() => {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((order) => (
+              {filteredOrders.map((order) => { 
+              return (
                 <tr key={order.id} className="border-b border-gray-700/30 hover:bg-gray-800/30 transition-colors">
                   <td className="p-2 sm:p-4">
-                    <div className="flex items-center gap-2">
-           
-                    {/* {order.status === 'fulfilled' && 
-                    order.paymentStatus === 'paid'   &&
-                    currentUser.department?.name_department === 'CUNG_UNG' &&
-                    (
-                      
-                    )} */}
-
+                    {showCheckbox && Number(order.status) ===7 &&(
                     <input
                         type="checkbox"
                         checked={selectedOrders.includes(order.id)}
                         onChange={() => toggleOrderSelection(order.id)}
                         className="form-checkbox text-blue-500 h-6 w-6"
                       />
+                    )}
+                      
+                  </td>
+                  <td className="p-2 sm:p-4">
+                    <div className="flex items-center gap-2">
 
                     <div>
                       <p className="text-white font-medium text-xs sm:text-sm">{order.orderNumber}</p>
-                      <p className="text-gray-400 text-xs">ID: {order.id}</p>
                     </div>
                     </div>
                   </td>
@@ -902,7 +924,10 @@ useEffect(() => {
                     </div>
                   </td>    
                 </tr>
-              ))}
+              );
+               
+                
+              })}
             </tbody>
           </table>
         </div>
@@ -939,7 +964,7 @@ useEffect(() => {
       )}
 
       </div>
-      )}
+      
       {selectedMonths.length > 0 && (
           <button
             onClick={handleExportSelectedMonths}
