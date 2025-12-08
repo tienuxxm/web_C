@@ -412,12 +412,12 @@ class OrderController extends Controller
                 }
 
                 // 3. Nếu là SẾP (Giam doc): Không where gì cả (thấy hết)
-                elseif ($user->isRole('giam_doc')) {
+                elseif ($user->isRole('Leader')) {
                     // No filter
                 }
                 // Có thể lọc thêm theo Role ở đây nếu muốn bảo mật phía server
                 // VD: Nếu là Sales chỉ lấy đơn status 1, 10
-                $query->whereIn('Status', [1, 10]);
+                $query->whereIn('Status', [1, 10, 7]);
             }
 
             // Nhóm 'cancelled'
@@ -604,36 +604,86 @@ class OrderController extends Controller
         }
     }
     // Thêm vào OrderController.php
+    // app/Http/Controllers/OrderController.php
+
     public function stats(Request $request)
     {
         $user = JWTAuth::user();
 
-        // Logic phân quyền cơ bản
+        // ✅ CÁCH CHUẨN: Lấy tên bảng động từ Model
+        // Dù bạn có đổi tên bảng trong Order.php thành gì thì dòng này vẫn đúng.
+        $tbl = (new Order)->getTable();
+
         $query = Order::query();
-        // if (!$user->hasRole(['admin', 'manager'])) {
-        //     $query->where('CreatedBy', $user->code);
-        // }
 
-        // Sử dụng query builder để đếm nhanh (Performance cao)
-        $total = $query->count();
+        // =================================================================
+        // BƯỚC 1: LỌC PHẠM VI (SCOPE)
+        // =================================================================
 
-        // Đếm theo trạng thái (dựa trên logic role của bạn)
-        $pending = (clone $query)->whereIn('Status', [0, 1])->count(); // Ví dụ: Draft + Pending
-        $processing = (clone $query)->where('Status', 2)->count();     // Ví dụ: Approved
+        // CASE A: SALES / KINH DOANH
+        if ($user->isRole('Sales') || $user->isInDepartment('Kinh doanh')) {
+            // SQL sẽ hiểu: WHERE [API$Purchase Header].[CreatedBy] = ...
+            $query->where("$tbl.CreatedBy", $user->code);
+        }
 
-        // Tính tổng doanh thu (chỉ tính đơn đã thanh toán)
-        // Lưu ý: Logic này cần join bảng items nếu total không lưu ở header
-        // Hoặc nếu bạn đã lưu total_amount ở Header thì sum trực tiếp
-        // Giả sử bảng header chưa có total, ta join:
+        // CASE B: CUNG ỨNG / HÀNH CHÍNH
+        elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính')) {
+            $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
+            $query->whereIn("$tbl.Industry", $allowedIndustries);
+        }
+
+        // CASE C: LEADER / GIÁM ĐỐC (Xem hết)
+        elseif ($user->isRole('Leader') || $user->isRole('giam_doc')) {
+            // No filter
+        }
+
+        // CASE D: Khác
+        else {
+            $query->where("$tbl.CreatedBy", $user->code);
+        }
+
+        // =================================================================
+        // BƯỚC 2: ĐẾM THEO TRẠNG THÁI
+        // =================================================================
+
+        $total = (clone $query)->count();
+        $pending = 0;
+        $processing = 0;
+
+        // 1. SALES
+        if ($user->isRole('Sales') || $user->isInDepartment('Kinh doanh')) {
+            $pending    = (clone $query)->whereIn("$tbl.Status", [1])->count();
+            $processing = (clone $query)->whereIn("$tbl.Status", [10])->count();
+        }
+
+        // 2. CUNG ỨNG / HÀNH CHÍNH
+        elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính')) {
+            $pending    = (clone $query)->whereIn("$tbl.Status", [1, 3])->count();
+            $processing = (clone $query)->whereIn("$tbl.Status", [2, 4, 8])->count();
+        }
+
+        // 3. LEADER / GIÁM ĐỐC
+        elseif ($user->isRole('Leader') || $user->isRole('giam_doc')) {
+            $pending    = (clone $query)->where("$tbl.Status", 2)->count();
+            $processing = (clone $query)->whereIn("$tbl.Status", [3, 4, 11])->count();
+        }
+
+        // =================================================================
+        // BƯỚC 3: TÍNH DOANH THU
+        // =================================================================
+
+        // Đoạn này buộc phải JOIN để lấy Price/Quantity từ bảng Line
+        // SQL Server rất khó tính, khi JOIN bắt buộc phải chỉ rõ cột nào thuộc bảng nào
+
         $revenue = (clone $query)
-            ->join('API$Purchase Line as lines', 'API$Purchase Header.DocumentNo', '=', 'lines.DocumentNo')
+            ->join('API$Purchase Line as lines', "$tbl.DocumentNo", '=', 'lines.DocumentNo')
             ->sum(DB::raw('lines.Quantity * lines.Price'));
 
         return response()->json([
-            'total_orders' => $total,
-            'pending_orders' => $pending,
+            'total_orders'      => $total,
+            'pending_orders'    => $pending,
             'processing_orders' => $processing,
-            'total_revenue' => $revenue
+            'total_revenue'     => $revenue
         ]);
     }
 

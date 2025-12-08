@@ -499,7 +499,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   // const isKinhDoanh = currentUser.department?.name_department === 'KINH_DOANH';
   const ALLOWED_DEPARTMENTS = ['CUNG_UNG', 'HANH_CHANH']; const isGiamDoc = currentUser.role.name_role === 'giam_doc';
   const canAddItem = ALLOWED_DEPARTMENTS.includes(currentUser?.department?.name_department);
-
+const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
   const canEditQuantityOnly = !readOnly && (canAddItem || isGiamDoc);
 
 
@@ -693,6 +693,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         <select
                           // Sử dụng giá trị currentValue đã tính toán ở trên
                           value={currentValue}
+                          disabled={!canEditDetails}
                           onChange={(e) => updateItem(index, 'productId', e.target.value)}
                           className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
                         >
@@ -825,6 +826,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                 name="estimatedDelivery"
                 value={formData.estimatedDelivery}
                 min={formData.orderDate}
+                disabled={!canEditDetails}
                 onChange={handleChange}
                 className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
               />

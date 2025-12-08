@@ -165,7 +165,7 @@ class MergeOrderController extends Controller
         // 2. Nhóm 'merged_completed': Theo dõi & Hoàn tất
         elseif ($group === 'merged_completed') {
             // Status: Đã duyệt (3), Đang đặt (4), Hoàn thành (11)
-            $query->whereIn('Status', [3, 4, 11]);
+            $query->whereIn('Status', [ 4, 11]);
         }
             // (Có thể thêm logic lọc theo User/Phòng ban nếu cần)
 

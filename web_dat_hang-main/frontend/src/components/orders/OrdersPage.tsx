@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Search, Filter, Edit, Trash2, Eye, Package, Clock, CheckCircle, XCircle, AlertCircle, GitMerge } from 'lucide-react';
+import { Plus, Search, Filter, RotateCcw, Edit, Trash2, Eye, Package, Clock, CheckCircle, XCircle, AlertCircle, GitMerge } from 'lucide-react';
 import api from '../../services/api';
 
 import { OrderPayload, OrderFromAPI } from './OrderModal';
@@ -8,6 +8,7 @@ import OrderModal from './OrderModal'; // 👈 Nếu OrderModal.tsx nằm cùng 
 import { getCurrentUser } from '../../utils/auth';
 import { useLocation } from 'react-router-dom';
 import MySwal from '../../utils/swal';
+import { getStatConfig } from '../../utils/orderStatusMapping';
 import toast from 'react-hot-toast';
 
 interface OrderItem {
@@ -44,12 +45,12 @@ interface Order {
 
 interface OrdersPageProps {
   mode: 'normal' | 'monthly' | 'yearly' | 'merged';
-  filterType?:string; // 👈 Thêm prop này
+  filterType?: string; // 👈 Thêm prop này
 }
 
 
 
-const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
+const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
@@ -87,7 +88,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
         q: search,
         status: selectedStatus !== 'all' ? selectedStatus : undefined,
         limit: 6, // Nên thêm limit rõ ràng
-        group :filterType
+        group: filterType
       };
 
       // 👇 2. Gọi dynamic endpoint
@@ -247,7 +248,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
         shipping: Number(apiOrder.shipping),
         total: Number(apiOrder.total_amount),
         items: apiOrder.items.map((it: any) => ({
-          id:it.id,
+          id: it.id,
           product: {
             id: it.product.id || '',
             code: it.product?.code || '',
@@ -414,8 +415,56 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
   // 4. Hàm gọi API Gộp (Như đã bàn trước đó)
   const handleMergeOrders = async () => {
 
+    const result = await MySwal.fire({
+      title: 'Xác nhận gộp đơn?',
+      // Dùng HTML để highlight số lượng đơn
+      html: `
+            <div class="flex flex-col items-center gap-2">
+                <p>Bạn đang chọn gộp <span class="text-yellow-400 font-bold text-lg">${selectedOrders.length}</span> đơn hàng.</p>
+                <p class="text-sm opacity-80">Hệ thống sẽ tạo ra một đơn <b>MP (Merge PO)</b> mới.</p>
+            </div>
+        `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Tiến hành gộp',
+      cancelButtonText: 'Suy nghĩ lại',
+      reverseButtons: true, // Đảo nút Cancel sang trái, Confirm sang phải
 
-    if (!confirm(`Bạn có chắc muốn gộp ${selectedOrders.length} đơn này không?`)) return;
+      // Bạn có thể override style nút Confirm riêng cho hành động này nếu muốn (ví dụ màu tím)
+      // customClass: { 
+      //    confirmButton: 'bg-purple-600 hover:bg-purple-700 ...' 
+      // }
+    });
+
+    // 3. Nếu người dùng bấm Hủy -> Dừng
+    if (!result.isConfirmed) return;
+
+    // 4. Nếu Đồng ý -> Gọi API gộp
+    try {
+      // Hiển thị loading
+      MySwal.fire({
+        title: 'Đang xử lý...',
+        didOpen: () => MySwal.showLoading()
+      });
+
+      // ... Code gọi API merge của bạn ở đây ...
+      // await api.post('/orders/merge', { order_ids: selectedOrders });
+
+      // Thông báo thành công
+      await MySwal.fire({
+        icon: 'success',
+        title: 'Gộp đơn thành công!',
+        timer: 2000,
+        showConfirmButton: false
+      });
+
+    } catch (error) {
+      MySwal.fire({
+        icon: 'error',
+        title: 'Có lỗi xảy ra',
+        text: 'Không thể gộp đơn hàng lúc này.'
+      });
+    }
 
     try {
       await api.post('/orders/merge', { order_ids: selectedOrders });
@@ -510,14 +559,14 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
     setSelectedYears([]);
     loadStats();
 
-    if (mode === 'normal'|| mode === 'merged') {
+    if (mode === 'normal' || mode === 'merged') {
       fetchOrders();
     } else if (mode === 'monthly') {
       fetchMonthlyOrders();
     } else if (mode === 'yearly') {
       fetchYearlyOrders();
     }
-  }, [mode, page, refreshKey, currentUser, search,filterType]);
+  }, [mode, page, refreshKey, currentUser, search, filterType]);
 
   const toggleMonthSelection = (month: string) => {
     setSelectedMonths(prev =>
@@ -554,6 +603,9 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
       toast.error(err.response?.data?.message || 'Xuất thất bại');
     }
   };
+  const reloadList = () => {
+    setRefreshKey(prev => prev + 1);
+  };
 
   const handleExportSelectedYears = async () => {
     try {
@@ -580,24 +632,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
 
   const role = currentUser?.role?.name_role;
   const dept = currentUser?.department?.name_department;
-
-  const pendingLabel =
-    dept === 'KINH_DOANH'
-      ? 'Đơn nháp (Draft)'
-      : dept === 'CUNG_UNG'
-        ? 'Đơn chờ xử lý (Pending)'
-        : role === 'giam_doc'
-          ? 'Đơn cần duyệt (Approved)'
-          : 'Chưa rõ';
-
-  const processingLabel =
-    dept === 'KINH_DOANH'
-      ? 'Đơn đã gửi chờ duyệt (Pending)'
-      : dept === 'CUNG_UNG'
-        ? 'Đơn đã duyệt (Approved)'
-        : role === 'giam_doc'
-          ? 'Đơn đang giao (Fulfilled)'
-          : 'Chưa rõ';
+  const config = getStatConfig(role, dept);
   useEffect(() => {
     if (initialSearch) {
       setSearch(initialSearch);
@@ -668,18 +703,29 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center justify-between">
+
         <div>
           <h1 className="text-xl sm:text-3xl font-bold text-white mb-2">Order Management</h1>
           <p className="text-gray-400 text-sm sm:text-base">Track and manage customer orders</p>
         </div>
-        <button
-          onClick={handleAddOrder}
-          className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
-        >
-          <Plus className="h-5 w-5" />
-          <span className="hidden sm:inline">Create Order</span>
-          <span className="sm:hidden">Create</span>
-        </button>
+        <div className='flex items-center gap-4 justify-end-4'>
+          <button
+            onClick={handleAddOrder}
+            className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
+          >
+            <Plus className="h-5 w-5" />
+            <span className="hidden sm:inline">Create Order</span>
+            <span className="sm:hidden">Create</span>
+          </button>
+          <button
+            onClick={() => { reloadList(); setPage(1) }}
+            className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105"
+          >
+            <RotateCcw className="h-5 w-5" />
+            <span>Load Orders</span>
+          </button>
+        </div>
+
       </div>
 
       {/* Stats Cards */}
@@ -697,21 +743,26 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
         <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
           <div className="flex items-center justify-between">
             <div>
-
-              <p className="text-gray-400 text-xs sm:text-sm">{pendingLabel}</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">{stats.pending}</p>
+              <p className="text-gray-400 text-xs sm:text-sm">{config.pending.label}</p>
+              <h3 className="text-white text-lg sm:text-2xl font-bold">{stats.pending}</h3>
+              <p className="text-xs text-gray-500 mt-1">{config.pending.description}</p>
             </div>
-            <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-400" />
+            <div className={`p-2 rounded-lg ${config.pending.color}`}>
+              <config.pending.icon size={20} />
+            </div>          
           </div>
         </div>
 
         <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-400 text-xs sm:text-sm">{processingLabel}</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">{stats.processing}</p>
+              <p className="text-gray-400 text-xs sm:text-sm">{config.processing.label}</p>
+              <h3 className="text-white text-lg sm:text-2xl font-bold">{stats.processing}</h3>
+              <p className="text-xs text-gray-500 mt-1">{config.processing.description}</p>
             </div>
-            <AlertCircle className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+            <div className={`p-2 rounded-lg ${config.processing.color}`}>
+              <config.processing.icon size={20} />
+            </div>          
           </div>
         </div>
 
@@ -899,12 +950,12 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode ,filterType}) => {
                        
                       )} */}
 
-                        <button
+                        {/* <button
                           onClick={() => handleDeleteOrder(order)}
                           className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />
-                        </button>
+                        </button> */}
 
                         <button
                           onClick={() => handleEditOrder(order, true)} // 👈 Xem chi tiết
