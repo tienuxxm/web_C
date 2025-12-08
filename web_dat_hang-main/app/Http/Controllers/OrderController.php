@@ -40,7 +40,7 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $user = JWTAuth::user();
-
+        $this->authorize('create', Order::class);
         // 1. Validate
         $validated = $request->validate([
             'industry_id'   => 'required', // Bắt buộc có ngành hàng
@@ -209,9 +209,9 @@ class OrderController extends Controller
     public function update(Request $request, $id)
     {
         $user = JWTAuth::user();
-
         // Load Order và Status hiện tại
         $order = Order::with('statusInfo')->where('DocumentNo', $id)->first();
+        $this->authorize('update', $order);
 
         if (!$order) {
             return response()->json(['message' => 'Không tìm thấy đơn hàng'], 404);
@@ -386,6 +386,7 @@ class OrderController extends Controller
     {
         try {
             $user = JWTAuth::user();
+            $this->authorize('viewAny', Order::class);
 
             // 1. Khởi tạo Query & Eager Load
             // Load sẵn 'items' để tính tổng tiền và 'user' để lấy tên người tạo
@@ -396,10 +397,27 @@ class OrderController extends Controller
 
             // Nhóm 'all_orders' (Đơn PO)
             if ($group === 'all_orders') {
+                if ($user->isRole('Sales')) {
+                    $query->where('CreatedBy', $user->code);
+                }
+
+                // 2. Nếu là CUNG ỨNG / HÀNH CHÍNH: Lọc theo danh sách Industry được cấp phép
+                elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
+                    // Lấy ra mảng các mã Industry mà user này được phép. 
+                    // Ví dụ: ['GIAY', 'MAYMAC']
+                    $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
+
+                    // Query: SELECT * FROM Orders WHERE Industry IN ('GIAY', 'MAYMAC')
+                    $query->whereIn('Industry', $allowedIndustries);
+                }
+
+                // 3. Nếu là SẾP (Giam doc): Không where gì cả (thấy hết)
+                elseif ($user->isRole('giam_doc')) {
+                    // No filter
+                }
                 // Có thể lọc thêm theo Role ở đây nếu muốn bảo mật phía server
                 // VD: Nếu là Sales chỉ lấy đơn status 1, 10
-                   $query->whereIn('Status', [1, 10]);
-                
+                $query->whereIn('Status', [1, 10]);
             }
 
             // Nhóm 'cancelled'

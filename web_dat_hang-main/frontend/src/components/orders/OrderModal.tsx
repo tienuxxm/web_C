@@ -59,7 +59,7 @@ export interface OrderFromAPI {
   notes: string;
   industry_id: number;
   items: {
-    id:  number;
+    id: number;
     product: {
       id: string;
       code: string;
@@ -175,7 +175,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
   // Thay thế đoạn useEffect map data trong OrderModal.tsx
 
-useEffect(() => {
+  useEffect(() => {
     if (order) {
       // 🔍 DEBUG 1: In ra item gốc từ API để soi
       console.log("DATA GỐC TỪ API (Items):", order.items);
@@ -189,24 +189,24 @@ useEffect(() => {
       setFormData({
         orderNumber: order.orderNumber,
         supplier_name: order.supplierName ?? '',
-        
+
         // 👇 KHU VỰC QUAN TRỌNG NHẤT
         items: order.items.map((it: any) => {
-           // 🔍 DEBUG 2: In ra ID của từng dòng
-           console.log(
-           
-               it.id
-           );
+          // 🔍 DEBUG 2: In ra ID của từng dòng
+          console.log(
 
-           return {
-              id: it.id, // ✅ Gán giá trị tìm được vào đây
-              productId: it.product.id,
-              productCode: it.product.code,
-              productName: it.product.name,
-              quantity: it.quantity,
-              price: it.product.price,
-              color: it.product.color
-           };
+            it.id
+          );
+
+          return {
+            id: it.id, // ✅ Gán giá trị tìm được vào đây
+            productId: it.product.id,
+            productCode: it.product.code,
+            productName: it.product.name,
+            quantity: it.quantity,
+            price: it.product.price,
+            color: it.product.color
+          };
         }),
         // 👆 HẾT KHU VỰC QUAN TRỌNG
 
@@ -224,8 +224,8 @@ useEffect(() => {
 
     } else {
       // === CHẾ ĐỘ TẠO MỚI ===
-      setSelectedCategoryId(''); 
-      setProducts([]); 
+      setSelectedCategoryId('');
+      setProducts([]);
       // Reset form data về mặc định
       setFormData({
         orderNumber: '',
@@ -320,7 +320,7 @@ useEffect(() => {
       items: [...prev.items, newItem]
     }));
   };
-  
+
 
   // ✅ LOGIC MỚI: REMOVE ITEM VỚI SWEETALERT2
   const removeItem = async (index: number) => {
@@ -330,72 +330,72 @@ useEffect(() => {
     const isMergeOrder = formData.orderNumber?.startsWith('MP');
     const isDraft = Number(formData.status) === 8;
     // Fallback: Tìm ID từ item hoặc từ logic khác nếu cần
-    const realId = itemToRemove.id; 
+    const realId = itemToRemove.id;
     const hasRealId = realId && !String(realId).startsWith('temp');
 
     if (isMergeOrder && isDraft && hasRealId) {
-        // 👇 THAY THẾ WINDOW.CONFIRM BẰNG MYSWAL
-        const result = await MySwal.fire({
-            title: '📦 Tách Đơn Hàng?',
-            html: `
+      // 👇 THAY THẾ WINDOW.CONFIRM BẰNG MYSWAL
+      const result = await MySwal.fire({
+        title: '📦 Tách Đơn Hàng?',
+        html: `
                 <div class="text-left text-sm">
                     <p class="mb-2">Bạn đang xóa sản phẩm: <span class="font-bold text-yellow-400">${itemToRemove.productName}</span></p>
                     <p>Hệ thống sẽ <b>TỰ ĐỘNG TÁCH</b> dòng này sang một đơn gộp mới (Nháp) để xử lý sau thay vì xóa vĩnh viễn.</p>
                 </div>
             `,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Đồng ý, Tách ngay',
-            cancelButtonText: 'Hủy bỏ',
-            reverseButtons: true // Đảo vị trí nút cho thuận tay
-        });
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Đồng ý, Tách ngay',
+        cancelButtonText: 'Hủy bỏ',
+        reverseButtons: true // Đảo vị trí nút cho thuận tay
+      });
 
-        // 👇 Kiểm tra kết quả bấm nút
-        if (result.isConfirmed) {
-            try {
-                // Hiển thị loading khi đang gọi API
-                MySwal.fire({
-                    title: 'Đang xử lý...',
-                    text: 'Vui lòng chờ trong giây lát',
-                    allowOutsideClick: false,
-                    didOpen: () => {
-                        MySwal.showLoading();
-                    }
-                });
-
-                // Gọi API Split
-                await api.post('/orders/split', {
-                    merge_id: formData.orderNumber,
-                    line_ids: [realId]
-                });
-
-                // Tắt loading và thông báo thành công
-                await MySwal.fire({
-                    icon: 'success',
-                    title: 'Thành công!',
-                    text: 'Sản phẩm đã được tách sang đơn mới.',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-                
-                // Cập nhật giao diện: Xóa dòng đó đi
-                setFormData(prev => ({
-                    ...prev,
-                    items: prev.items.filter((_, i) => i !== index)
-                }));
-
-            } catch (error: any) {
-                console.error("Lỗi tách đơn:", error);
-                
-                // Thông báo lỗi đẹp
-                MySwal.fire({
-                    icon: 'error',
-                    title: 'Lỗi',
-                    text: error.response?.data?.message || "Không thể tách đơn. Vui lòng thử lại."
-                });
+      // 👇 Kiểm tra kết quả bấm nút
+      if (result.isConfirmed) {
+        try {
+          // Hiển thị loading khi đang gọi API
+          MySwal.fire({
+            title: 'Đang xử lý...',
+            text: 'Vui lòng chờ trong giây lát',
+            allowOutsideClick: false,
+            didOpen: () => {
+              MySwal.showLoading();
             }
+          });
+
+          // Gọi API Split
+          await api.post('/orders/split', {
+            merge_id: formData.orderNumber,
+            line_ids: [realId]
+          });
+
+          // Tắt loading và thông báo thành công
+          await MySwal.fire({
+            icon: 'success',
+            title: 'Thành công!',
+            text: 'Sản phẩm đã được tách sang đơn mới.',
+            timer: 2000,
+            showConfirmButton: false
+          });
+
+          // Cập nhật giao diện: Xóa dòng đó đi
+          setFormData(prev => ({
+            ...prev,
+            items: prev.items.filter((_, i) => i !== index)
+          }));
+
+        } catch (error: any) {
+          console.error("Lỗi tách đơn:", error);
+
+          // Thông báo lỗi đẹp
+          MySwal.fire({
+            icon: 'error',
+            title: 'Lỗi',
+            text: error.response?.data?.message || "Không thể tách đơn. Vui lòng thử lại."
+          });
         }
-        return; // Dừng, không chạy logic xóa thường bên dưới
+      }
+      return; // Dừng, không chạy logic xóa thường bên dưới
     }
 
     // --- Logic xóa thường (cho đơn PO hoặc item mới thêm) ---
@@ -535,7 +535,7 @@ useEffect(() => {
                   value={formData.orderNumber}
                   onChange={handleChange}
                   required
-                  disabled // Không cho sửa nếu là đơn đã có
+                  disabled
                   className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
                   placeholder="Enter order number"
                 />
@@ -550,7 +550,7 @@ useEffect(() => {
                 value={formData.orderDate}
                 onChange={handleChange}
                 required
-                disabled={!!order} // Không cho sửa nếu là đơn đã có
+                disabled // Không cho sửa nếu là đơn đã có
                 className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
               />
             </div>
@@ -636,8 +636,8 @@ useEffect(() => {
                     onClick={addItem}
                     disabled={!selectedCategoryId}
                     className={`flex items-center px-4 py-2 rounded-lg transition-colors ${!selectedCategoryId
-                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
                       }`}
                   >
                     <Plus className="h-4 w-4" />
@@ -764,7 +764,7 @@ useEffect(() => {
             <div className="space-y-2">
               <div className="flex justify-between text-gray-300 text-sm sm:text-base">
                 <span>Subtotal:</span>
-                <span>${formData.subtotal.toFixed(2)}</span>
+                <span>{formData.subtotal.toFixed(2)} VNĐ</span>
               </div>
               {/* <div className="flex justify-between text-gray-300 text-sm sm:text-base">
                 <span>Tax (8%):</span>
@@ -784,7 +784,7 @@ useEffect(() => {
               <hr className="border-gray-700" />
               <div className="flex justify-between text-white font-semibold text-base sm:text-lg">
                 <span>Total:</span>
-                <span>${Number(formData.total).toFixed(2)}</span>
+                <span>{Number(formData.total).toFixed(2)} VNĐ</span>
               </div>
             </div>
           </div>
@@ -798,7 +798,6 @@ useEffect(() => {
                 value={formData.status}
                 onChange={(e) => {
                   const val = Number(e.target.value);
-                  console.log("👉 SELECTED CHANGE:", val);
                   setFormData(prev => ({ ...prev, status: val }));
 
                   // Gợi ý User nhập Note nếu chọn Hủy hoặc Trả về
@@ -818,6 +817,7 @@ useEffect(() => {
                 })}
               </select>
             </div>
+         
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Estimated Delivery</label>
               <input
@@ -829,7 +829,6 @@ useEffect(() => {
                 className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
               />
             </div>
-
           </div>
 
           {/* Notes */}

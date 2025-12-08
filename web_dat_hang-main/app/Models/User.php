@@ -26,18 +26,7 @@ class User extends Authenticatable implements JWTSubject
     public function getJWTIdentifier() { return $this->getKey(); }
     public function getJWTCustomClaims() { return []; }
 
-    // ==========================================
-    // KHAI BÁO MỐI QUAN HỆ (RELATIONSHIPS)
-    // ==========================================
 
-    /**
-     * 1. Quan hệ với Role (Nhiều-Nhiều)
-     * - User: cột liên kết là 'code' (VD: NV-0089)
-     * - Role: cột liên kết là 'ID' (VD: 2)
-     * - Bảng trung gian: 'API$UserRoles'
-     * + Cột giữ mã User: 'UserId'
-     * + Cột giữ ID Role: 'RoleId'
-     */
     public function roles()
     {
         return $this->belongsToMany(
@@ -108,4 +97,33 @@ class User extends Authenticatable implements JWTSubject
 
         return false;
     }
+    // Trong file app/Models/User.php
+
+// 1. Khai báo quan hệ với Category (Ngành hàng) như bạn đã gửi
+public function allowedIndustries()
+{
+    return $this->belongsToMany(
+        Category::class,                // Model đích
+        'dbo.API$rpt_Industry_Allow',   // Bảng trung gian
+        'UserCode',                     // Khóa ngoại của User (trong bảng trung gian)
+        'Industry',                     // Khóa ngoại của Category (trong bảng trung gian)
+        'code',                         // Khóa chính của User (là cột 'code')
+        'Code'                          // Khóa chính của Category
+    )
+    ->withPivot('Status')
+    ->wherePivot('Status', 1); // Giả sử Status = 1 là đang Active (được cấp quyền)
+}
+
+/**
+ * Helper function: Kiểm tra User có quyền với ngành hàng này không?
+ * Dùng cho Policy
+ */
+public function canAccessIndustry($industryCode)
+{
+    // Lấy danh sách Code ngành hàng user được phép
+    // Cache lại 60s hoặc dùng request cache để không query database liên tục nếu check nhiều
+    $allowedCodes = $this->allowedIndustries()->pluck('Code')->toArray();
+    
+    return in_array($industryCode, $allowedCodes);
+}
 }

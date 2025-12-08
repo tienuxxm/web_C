@@ -14,15 +14,15 @@ use App\Http\Controllers\MergeOrderController;
 
 /* ---------- PUBLIC ---------- */
 Route::post('register', [AuthController::class, 'register']);
-Route::post('login',    [AuthController::class, 'login']);
-Route::get('me',       [AuthController::class, 'me']);
 Route::get('roles',      [RoleController::class,     'role']);
 Route::get('departments',[DepartmentController::class,'department']);
+Route::post('login',    [AuthController::class, 'login']);
 
 /* ---------- PROTECTED (JWT) ---------- */
 Route::middleware('auth:api')->group(function () {
 
     /* Auth */
+
     Route::post('logout', [AuthController::class, 'logout']);
 
     /* Reports */

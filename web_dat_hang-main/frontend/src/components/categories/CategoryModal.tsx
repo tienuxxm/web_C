@@ -236,7 +236,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ category, onSave, onClose
           </div>
 
           {/* Status */}
-          <div>
+          {/* <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
             <select
               name="status"
@@ -249,7 +249,7 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ category, onSave, onClose
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </select>
-          </div>
+          </div> */}
 
           {/* Actions */}
           <div className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-700/50">
