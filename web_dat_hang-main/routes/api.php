@@ -61,7 +61,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('ids',  'getAllIds');
     Route::get('{order}',  'show'); 
     Route::post('split','split');
-    Route::post ('import-multiple','importMultipleOrders');
+    Route::post ('import','importMultipleOrders');
     
 });
     Route::get('/merge-orders/{id}',[MergeOrderController::class,'show']);

@@ -94,10 +94,14 @@ class MergeOrderController extends Controller
 
             // Flow 1: Từ Nháp (8) -> Gửi duyệt (2) hoặc Hủy (5)
             // (Đoạn này thay thế cho logic cũ của bạn)
-
+            if ($currentStatus == 8) { // OrderStatus::TYPE_DA_DUYET
+                if ($newStatus == 2) {
+                    $canChange = true;
+                }
+            }
 
             // Flow 2: Từ Đã duyệt (3) -> Đang đặt hàng (4)
-            if ($currentStatus == 3) { // OrderStatus::TYPE_DA_DUYET
+            elseif ($currentStatus == 3) { // OrderStatus::TYPE_DA_DUYET
                 if ($newStatus == 4) {
                     $canChange = true;
                 }
@@ -114,7 +118,7 @@ class MergeOrderController extends Controller
         // --- PHÂN QUYỀN: NHÓM LÃNH ĐẠO (LEADER / GIÁM ĐỐC) ---
         // (Giữ logic này để Sếp có thể duyệt đơn từ 2 -> 3)
         elseif ($user->isRole('Leader') || $user->isRole('Manage')) {
-            if ($currentStatus == 8) { // Đang chờ duyệt
+            if ($currentStatus == 2) { // Đang chờ duyệt
                 if (in_array($newStatus, [3, 5])) { // Duyệt (3) hoặc Từ chối (5)
                     $canChange = true;
                 }
@@ -159,7 +163,7 @@ class MergeOrderController extends Controller
         // 1. Nhóm 'merged_process': Quy trình duyệt (Leader/Cung ứng)
         if ($group === 'merged_process') {
             // Status: Merge/Nháp (8), Đã duyệt (3), Hủy (5)
-            $query->whereIn('Status', [8, 3, 5]); 
+            $query->whereIn('Status', [8, 3, 5,2]); 
         }
         
         // 2. Nhóm 'merged_completed': Theo dõi & Hoàn tất

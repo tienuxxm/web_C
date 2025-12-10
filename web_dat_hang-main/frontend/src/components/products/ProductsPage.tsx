@@ -460,13 +460,13 @@ useEffect(() => {
           <p className="text-gray-400">Manage your product inventory and catalog</p>
         </div>
         <div className="flex items-center gap-4 justify-end-4">
-          <button
+          {/* <button
           onClick={handleAddProduct}
           className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105"
         >
           <Plus className="h-5 w-5" />
           <span>Add Product</span>
-        </button>
+        </button> */}
         <button
           onClick={() => {reloadList();setPage(1)}}
           className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105"

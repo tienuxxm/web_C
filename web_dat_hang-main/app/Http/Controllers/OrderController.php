@@ -50,12 +50,11 @@ class OrderController extends Controller
             'estimated_delivery' => 'required|date',
             'items'         => 'required|array|min:1',
             'items.*.productCode' => 'required',
-            // 'items.*.variant'     => 'required|string',
+            'items.*.productName' => 'nullable|string', // ✅ Chấp nhận tên từ FE
+            'items.*.price'       => 'nullable|numeric', // ✅ Chấp nhận giá từ FE
             'items.*.quantity'    => 'required|numeric|min:1',
         ]);
 
-        // Lưu ý: Kiểm tra lại tên connection trong file config/database.php
-        // Nếu bạn cấu hình là 'sqlsrv_api' thì sửa lại dòng dưới, nếu mặc định là 'sqlsrv' thì giữ nguyên.
         DB::connection('sqlsrv')->beginTransaction();
 
         try {
@@ -78,7 +77,7 @@ class OrderController extends Controller
                 'DocumentNo'   => $newDocumentNo,
                 'PostingDate'  => $request->orderDate,
                 'ShipmentDate' => $request->estimated_delivery,
-                'Industry'     => $request->industry_id, // Lưu ngành hàng
+                'Industry'     => $request->industry_id,
                 'IntendedUse'  => $request->intended_use,
                 'Supplier'     => $request->supplier_name,
                 'Status'       => 1, // Mới
@@ -91,13 +90,27 @@ class OrderController extends Controller
             foreach ($request->items as $index => $itemData) {
                 $quantity = (float)$itemData['quantity'];
                 $cleanCode = $itemData['productCode'];
-                $variant   = $itemData['variant'] ?? $itemData['color'] ?? '';
-                // Query lại Product để lấy thông tin gốc chính xác
-                $prod = \App\Models\Product::where('code', $cleanCode)->first();
 
-                $itemName = $prod ? $prod->name : 'Sản phẩm ' . $cleanCode;
-                $price    = $prod ? $prod->price : 0;
-                $unit     = $prod ? $prod->unit : '';
+                // ✅ Logic Variant: Ưu tiên FE, nếu không có và là ngành 18 thì set '000'
+                $isIndustry18 = ($request->industry_id == 18);
+                $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
+
+                // Query lại Product
+                $prod = Product::where('code', $cleanCode)->first();
+
+                if ($prod) {
+                    // --- A. CÓ TRONG DB ---
+                    $itemName = $prod->name;
+                    $price    = $prod->price;
+                    $unit     = $prod->unit;
+                    // Nếu variant vẫn rỗng thì lấy màu mặc định của SP
+                    if (empty($variant)) $variant = $prod->color;
+                } else {
+                    // --- B. NHẬP TAY (Ngành 18 hoặc SP ngoài) ---
+                    $itemName = $itemData['productName'];
+                    $price    = isset($itemData['price']) ? (float)$itemData['price'] : 0;
+                    $unit     = 'CAI'; // Mặc định đơn vị tính
+                }
 
                 // Insert Bảng 2: Original (Lưu vết)
                 \App\Models\OrderOriginal::create([
@@ -112,7 +125,7 @@ class OrderController extends Controller
                     'Quantity'    => $quantity,
                     'Price'       => $price,
                     'Status'      => 1,
-                    'Note'        => $request->notes ?? '',
+                    'Note'        => $request->notes,
                     'CreatedBy'   => $user->code,
                     'CreatedDate' => now(),
                 ]);
@@ -120,7 +133,7 @@ class OrderController extends Controller
                 // Insert Bảng 3: Line (Chi tiết)
                 OrderItem::create([
                     'DocumentNo'  => $newDocumentNo,
-                    'Line'        => ($index + 1), // Chuẩn ERP bước nhảy 10000
+                    'Line'        => ($index + 1),
                     'PostingDate' => $request->orderDate,
                     'ItemCode'    => $cleanCode,
                     'Variant'     => $variant,
@@ -137,27 +150,21 @@ class OrderController extends Controller
 
             DB::connection('sqlsrv')->commit();
 
-            // =========================================================
-            // 5. QUAN TRỌNG: Load lại dữ liệu đầy đủ để trả về Frontend
-            // =========================================================
-
+            // 5. Load lại dữ liệu trả về
             $fullOrder = Order::with(['items', 'user', 'statusInfo'])
                 ->where('DocumentNo', $newDocumentNo)
                 ->first();
 
-            // Tính tổng tiền
-            $subtotal = $fullOrder->items->sum(function ($item) {
-                return $item->Quantity * $item->Price;
-            });
+            $subtotal = $fullOrder->items->sum(fn($item) => $item->Quantity * $item->Price);
 
-            // Map dữ liệu chuẩn format Frontend (khớp với hàm show/index)
+            // Map dữ liệu (Giữ nguyên đoạn map của bạn)
             $formattedOrder = [
                 'id' => $fullOrder->DocumentNo,
                 'order_number' => $fullOrder->DocumentNo,
                 'supplier_name' => $fullOrder->Supplier,
                 'intended_use' => $fullOrder->IntendedUse,
                 'status' => (int)$fullOrder->Status,
-                'status_name' => $fullOrder->statusInfo->Name ?? 'Mới', // Có tên trạng thái ngay
+                'status_name' => $fullOrder->statusInfo->Name ?? 'Mới',
                 'industry_id' => $fullOrder->Industry,
                 'payment_status' => 'pending',
                 'order_date' => $fullOrder->PostingDate,
@@ -166,26 +173,22 @@ class OrderController extends Controller
                 'subtotal' => $subtotal,
                 'total_amount' => $subtotal,
                 'items_count' => $fullOrder->items->count(),
-
-                // Map items chi tiết cho Modal
                 'items' => $fullOrder->items->map(function ($item) {
                     $uniqueProductId = $item->ItemCode . ($item->Variant ? '-' . $item->Variant : '');
                     return [
                         'id' => $item->ID ?? $item->Line,
                         'product_code' => $item->ItemCode,
-                        'product_name' => $item->ItemName, // Có tên sản phẩm ngay
+                        'product_name' => $item->ItemName,
                         'quantity' => (float)$item->Quantity,
                         'price' => (float)$item->Price,
                         'total' => (float)($item->Quantity * $item->Price),
-
-                        // Cấu trúc lồng cho Modal Edit
                         'product' => [
                             'id' => $uniqueProductId,
                             'code' => $item->ItemCode,
                             'name' => $item->ItemName,
                             'price' => (float)$item->Price,
                             'color' => $item->Variant,
-                            'categoryId' => 10, // Hoặc query từ bảng Product nếu cần chính xác từng dòng
+                            'categoryId' => 10,
                         ]
                     ];
                 }),
@@ -194,7 +197,7 @@ class OrderController extends Controller
 
             return response()->json([
                 'message' => 'Tạo đơn hàng thành công',
-                'order' => $formattedOrder, // Trả về object đầy đủ
+                'order' => $formattedOrder,
             ], 201);
         } catch (\Exception $e) {
             DB::connection('sqlsrv')->rollBack();
@@ -220,26 +223,17 @@ class OrderController extends Controller
         // 1. XÁC ĐỊNH TYPE HIỆN TẠI VÀ TYPE ĐÍCH
         // Trong DB, cột Status lưu 'Type' (ví dụ: 1, 7, 8...)
         $currentType = (int)$order->Status;
-
-        // Frontend gửi lên Type (ví dụ: 10, 7), ta lấy thẳng giá trị này
         $inputStatusType = (int)$request->input('status');
-
-        // Kiểm tra xem Type này có tồn tại trong bảng OrderStatus không (để an toàn)
         $targetStatusObj = OrderStatus::where('Type', $inputStatusType)->first();
 
         if (!$targetStatusObj) {
             return response()->json(['message' => "Trạng thái đích (Type: $inputStatusType) không tồn tại trong hệ thống"], 422);
         }
-
-        // Vì Frontend đã gửi đúng Type rồi, ta dùng luôn
         $targetType = $inputStatusType;
-
-        // 2. KIỂM TRA BẮT BUỘC ĐỔI TRẠNG THÁI
         if ($targetType === $currentType) {
             // Ngoại lệ: Cho phép Sales/IT lưu lại đơn Mới (1) để cập nhật nội dung
             $isSalesSavingDraft = ($user->isRole('Sales') || $user->isInDepartment('IT'))
                 && $currentType === OrderStatus::TYPE_MOI;
-
             if (!$isSalesSavingDraft) {
                 return response()->json(['message' => 'Bạn chưa cập nhật trạng thái đơn hàng.'], 422);
             }
@@ -269,11 +263,11 @@ class OrderController extends Controller
                 }
                 // Flow 2: Chốt -> Gộp (8) / Gửi duyệt (2) / Trả về (10)
                 elseif ($currentType === OrderStatus::TYPE_CHOT) {
-                    if (in_array($targetType, [OrderStatus::TYPE_MERGE, OrderStatus::TYPE_CHO_DUYET, OrderStatus::TYPE_DIEU_CHINH])) $canChange = true;
+                    if (in_array($targetType, [OrderStatus::TYPE_MERGE])) $canChange = true;
                 }
                 // Flow 3: Gộp/Nháp -> Gửi duyệt / Điều chỉnh
                 elseif ($currentType === OrderStatus::TYPE_MERGE) {
-                    if (in_array($targetType, [OrderStatus::TYPE_CHO_DUYET, OrderStatus::TYPE_DIEU_CHINH])) $canChange = true;
+                    if (in_array($targetType, [OrderStatus::TYPE_CHO_DUYET])) $canChange = true;
                 }
                 // Flow 4: Đã duyệt -> Đặt hàng
                 elseif ($currentType === OrderStatus::TYPE_DA_DUYET) {
@@ -298,8 +292,6 @@ class OrderController extends Controller
                 ], 403);
             }
         }
-
-        // 4. VALIDATE LOGIC KHÁC
         if (in_array($targetType, [OrderStatus::TYPE_DIEU_CHINH, OrderStatus::TYPE_HUY]) && empty($request->notes)) {
             return response()->json(['message' => 'Bắt buộc nhập lý do vào ô Ghi chú.'], 422);
         }
@@ -323,25 +315,37 @@ class OrderController extends Controller
                 // Logic check quyền sửa items (như cũ)
                 $allowEditItems = false;
                 if ($user->isRole('Administrator')) $allowEditItems = true;
-                elseif ($user->isRole('Sales') || $user->isInDepartment('IT')) {
+                elseif ($user->isRole('Sales')) {
                     if (in_array($currentType, [OrderStatus::TYPE_MOI, OrderStatus::TYPE_DIEU_CHINH])) $allowEditItems = true;
                 } elseif ($user->isRole('Supply')) {
-                    // Supply được sửa ở các bước đầu, nhưng sau khi duyệt xong thì thôi
                     if (in_array($currentType, [OrderStatus::TYPE_MOI, OrderStatus::TYPE_CHOT, OrderStatus::TYPE_MERGE, OrderStatus::TYPE_DIEU_CHINH])) $allowEditItems = true;
                 }
 
                 if ($allowEditItems) {
-                    // Xóa items cũ
                     OrderItem::where('DocumentNo', $id)->delete();
 
-                    // Tạo items mới
                     foreach ($request->items as $index => $itemData) {
                         $cleanCode = $itemData['productCode'];
-                        $variant   = $itemData['variant'] ?? '';
                         $quantity  = (float)$itemData['quantity'];
 
+                        // ✅ Logic Variant Update: Dựa vào Industry của Order gốc
+                        $isIndustry18 = ($order->Industry == 18);
+                        $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
+
                         $prod = \App\Models\Product::where('code', $cleanCode)->first();
-                        if (empty($variant) && $prod) $variant = $prod->color;
+
+                        if ($prod) {
+                            // A. Có trong DB
+                            $itemName = $prod->name;
+                            $price    = $prod->price;
+                            $unit     = $prod->unit;
+                            if (empty($variant)) $variant = $prod->color;
+                        } else {
+                            // B. Nhập tay
+                            $itemName = $itemData['productName'];
+                            $price    = isset($itemData['price']) ? (float)$itemData['price'] : 0;
+                            $unit     = 'CAI';
+                        }
 
                         OrderItem::create([
                             'DocumentNo'  => $id,
@@ -349,12 +353,12 @@ class OrderController extends Controller
                             'PostingDate' => $request->orderDate,
                             'ItemCode'    => $cleanCode,
                             'Variant'     => $variant,
-                            'ItemName'    => $prod ? $prod->name : 'SP: ' . $cleanCode,
-                            'Unit'        => $prod ? $prod->unit : '',
+                            'ItemName'    => $itemName,
+                            'Unit'        => $unit,
                             'Quantity'    => $quantity,
                             'QuantityOld' => $quantity,
-                            'Price'       => $prod ? $prod->price : 0,
-                            'Status'      => $targetType, // ✅ Items cũng lưu theo Type
+                            'Price'       => $price,
+                            'Status'      => $targetType,
                             'CreatedBy'   => $user->code,
                             'CreatedDate' => now(),
                         ]);
@@ -705,7 +709,17 @@ class OrderController extends Controller
         if ($orders->count() === 0) {
             return response()->json(['message' => 'Không có đơn hàng hợp lệ (Phải là status Chốt).'], 422);
         }
-
+        
+        if ($orders->pluck('Supplier')->unique()->count() > 1) {
+            return response()->json([
+                'message' => 'Các đơn hàng được chọn KHÔNG cùng Nhà Cung Cấp. Vui lòng kiểm tra lại.'
+            ], 422);
+        }
+        if ($orders->pluck('Industry')->unique()->count() > 1) {
+             return response()->json([
+                'message' => 'Các đơn hàng được chọn KHÔNG cùng Ngành hàng.'
+            ], 422);
+        }
         // 2. Gom nhóm (Giữ nguyên logic)
         $mergedItems = [];
         $allSourceIds = [];
@@ -1032,143 +1046,192 @@ class OrderController extends Controller
     }
     public function importMultipleOrders(Request $request)
     {
+        $user = JWTAuth::user();
+        $this->authorize('create', Order::class);
+
+        if (!$request->hasFile('file')) {
+            return response()->json(['message' => 'Vui lòng chọn file Excel.'], 400);
+        }
+        if (!$request->industry_id) {
+            return response()->json(['message' => 'Vui lòng chọn Ngành hàng trước khi import.'], 422);
+        }
+
+        DB::connection('sqlsrv')->beginTransaction();
+
         try {
-            $user = JWTAuth::user();
-            $this->authorize('create', Order::class);
-
-            if (!$request->hasFile('file')) {
-                return response()->json(['message' => 'Vui lòng chọn file Excel để import.'], 400);
-            }
-
             $file = $request->file('file');
-            $spreadsheet = IOFactory::load($file->getPathname());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray(null, true, true, true);
-
-            // Bỏ qua dòng tiêu đề
-            array_shift($rows);
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
+            $rows = $spreadsheet->getActiveSheet()->toArray(null, true, true, true);
+            array_shift($rows); // Bỏ tiêu đề
 
             if (count($rows) === 0) {
                 return response()->json(['message' => 'File Excel không có dữ liệu.'], 422);
             }
 
-            // Gom nhóm sản phẩm theo (supplier_name + address)
             $groupedOrders = [];
+            $allowManualItems = ((int)$request->industry_id === 18);
 
             foreach ($rows as $index => $row) {
-                $barcode  = trim($row['A'] ?? '');
-                $color    = trim($row['B'] ?? '');
-                $quantity = intval($row['C'] ?? 0);
-                $address  = trim($row['D'] ?? '');
-                $supplierName = trim($row['E'] ?? '');
+                // Đọc các cột
+                $code     = trim($row['A'] ?? '');
+                $name     = trim($row['B'] ?? '');
+                $qty      = floatval($row['C'] ?? 0);
+                $price    = floatval($row['D'] ?? 0);
+                $supplier = trim($row['E'] ?? '');
+                $color    = trim($row['F'] ?? '');
 
-                if (!$barcode || !$color || $quantity <= 0 || !$address || !$supplierName) {
-                    return response()->json([
-                        'message' => "Dòng " . ($index + 2) . " thiếu thông tin cần thiết."
-                    ], 422);
+                // 👉 Đọc thêm 2 cột mới
+                $intendedUse = trim($row['G'] ?? '');
+                $note        = trim($row['H'] ?? '');
+
+                if ($qty <= 0 || !$supplier) continue;
+
+                // Logic tự sinh mã cho Ngành 18 (nếu trống)
+                if (empty($code) && $allowManualItems) {
+                    $code = '18' . date('ymd') . str_pad($index, 4, '0', STR_PAD_LEFT);
+                }
+                if (empty($color) && $allowManualItems) {
+                    $color = '000';
                 }
 
-                $product = Product::where('barcode', $barcode)->where('color', $color)->first();
-                if (!$product) {
-                    return response()->json([
-                        'message' => "Không tìm thấy sản phẩm {$barcode} - {$color} (Dòng " . ($index + 2) . ")"
-                    ], 404);
+                if (empty($code)) {
+                    return response()->json(['message' => "Dòng " . ($index + 2) . ": Thiếu Mã sản phẩm (Cột A)."], 422);
                 }
 
-                $key = $supplierName . '___' . $address;
-                $groupedOrders[$key][] = [
-                    'product' => $product,
-                    'quantity' => $quantity
+                // Gom nhóm
+                $groupedOrders[$supplier][] = [
+                    'code'        => $code,
+                    'name'        => $name,
+                    'qty'         => $qty,
+                    'price'       => $price,
+                    'color'       => $color,
+                    'intendedUse' => $intendedUse, // Lưu vào để dùng sau
+                    'note'        => $note,        // Lưu vào để dùng sau
+                    'line_index'  => $index + 2
                 ];
             }
 
-            $results = [];
+            $createdOrders = [];
+            $industryId = (int)$request->industry_id;
 
-            foreach ($groupedOrders as $groupKey => $items) {
-                [$supplierName, $address] = explode('___', $groupKey);
+            // Xử lý tạo đơn
+            foreach ($groupedOrders as $supplierName => $items) {
 
-                $subtotal = 0;
-                $categoryId = null;
-                $orderItems = [];
+                // Lấy IntendedUse và Note từ dòng đầu tiên của nhóm này
+                // Nếu dòng đầu tiên trống thì mặc định
+                $firstItem = $items[0];
+                $orderIntendedUse = !empty($firstItem['intendedUse']) ? $firstItem['intendedUse'] : 'Import Excel';
+                $orderNote        = !empty($firstItem['note']) ? $firstItem['note'] : 'Imported from Excel';
 
-                foreach ($items as $item) {
-                    $product = $item['product'];
-                    $quantity = $item['quantity'];
+                // Sinh mã PO
+                $prefix = 'PO' . date('ym');
+                $lastOrder = Order::where('DocumentNo', 'like', $prefix . '%')
+                    ->orderBy('DocumentNo', 'desc')
+                    ->lockForUpdate()
+                    ->first();
 
-                    // Gán danh mục đầu tiên
-                    if (is_null($categoryId)) {
-                        $categoryId = $product->category_id;
-
-                        if ($user->role->name_role === 'nhan_vien_chinh_thuc') {
-                            $allowed = $user->categories()->pluck('categories.id')->toArray();
-                            if (!in_array($categoryId, $allowed)) {
-                                return response()->json([
-                                    'message' => "Bạn không có quyền tạo đơn với danh mục sản phẩm này: {$product->name}"
-                                ], 403);
-                            }
-                        }
-                    }
-
-                    // Kiểm tra cùng danh mục
-                    if ($product->category_id !== $categoryId) {
-                        return response()->json([
-                            'message' => "Tất cả sản phẩm trong mỗi đơn phải thuộc cùng danh mục. Danh mục khác nhau: {$product->name}"
-                        ], 422);
-                    }
-
-                    $subtotal += $quantity * $product->price;
-
-                    $orderItems[] = [
-                        'product_id' => $product->id,
-                        'quantity'   => $quantity,
-                        'unit_price' => $product->price
-                    ];
+                $nextNum = 1;
+                if ($lastOrder) {
+                    $lastSeq = intval(substr($lastOrder->DocumentNo, -4));
+                    $nextNum = $lastSeq + 1;
                 }
-
-                $tax = round($subtotal * 0.08, 2);
-                $shipping = 0;
-                $total = $subtotal + $tax + $shipping;
-
-                // Tạo mã đơn
-                $prefix = DB::table('categories')->where('id', $categoryId)->value('prefix') ?? 'XX';
-                $timestamp = now('Asia/Ho_Chi_Minh')->format('ymdHis');
-                $random = strtoupper(Str::random(4));
-                $orderNumber = "{$prefix}-{$timestamp}-{$random}";
-
-                // Tạo đơn hàng
-                $order = Order::create([
-                    'order_number'     => $orderNumber,
-                    'user_id'          => $user->id,
-                    'status'           => 'draft',
-                    'subtotal'         => $subtotal,
-                    'tax'              => $tax,
-                    'shipping'         => $shipping,
-                    'total_amount'     => $total,
-                    'supplier_name'    => $supplierName,
-                    'shipping_address' => $address,
-                    'payment_status'   => 'pending',
-                    'order_date'       => now(),
+                $newDocumentNo = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+                // A. Tạo Header (Dùng Note và IntendedUse từ Excel)
+                Order::create([
+                    'DocumentNo'   => $newDocumentNo,
+                    'PostingDate'  => now(),
+                    'ShipmentDate' => now()->addDays(3),
+                    'Industry'     => $industryId,
+                    'IntendedUse'  => $orderIntendedUse, // ✅ Dùng dữ liệu Excel
+                    'Supplier'     => $supplierName,
+                    'Status'       => 1,
+                    'Note'         => $orderNote,        // ✅ Dùng dữ liệu Excel
+                    'CreatedBy'    => $user->code,
+                    'CreatedDate'  => now(),
                 ]);
 
-                foreach ($orderItems as $item) {
-                    $order->items()->create($item);
-                }
+                // B. Tạo Items
+                $manualItemIndex = 1;
 
-                $results[] = [
-                    'order_number' => $order->order_number,
-                    'total_amount' => $total
-                ];
+                foreach ($items as $i => $item) {
+                    $cleanCode = $item['code'];
+                    $variant   = $item['color'];
+
+                    // Logic mã tự sinh 180000... (Giữ nguyên logic cũ nếu muốn)
+                    if ($allowManualItems && str_starts_with($cleanCode, '18') && strlen($cleanCode) > 10) {
+                        // Nếu là mã tạm sinh từ vòng lặp trước, ta reset lại theo chuẩn 180000xxxx
+                        $cleanCode = '180000' . str_pad($manualItemIndex, 4, '0', STR_PAD_LEFT);
+                        $manualItemIndex++;
+                        if (empty($variant)) $variant = '000';
+                    }
+
+                    $prod = Product::where('code', $cleanCode)->first();
+
+                    if ($prod) {
+                        $itemName = $prod->name;
+                        $price    = $prod->price;
+                        $unit     = $prod->unit;
+                        $variant  = $item['color'] ?: $prod->color;
+                    } else {
+                        if (!$allowManualItems) {
+                            DB::connection('sqlsrv')->rollBack();
+                            return response()->json(['message' => "Lỗi dòng {$item['line_index']}: Mã '{$cleanCode}' không tồn tại."], 422);
+                        }
+                        if (empty($item['name']) || empty($item['price'])) {
+                            DB::connection('sqlsrv')->rollBack();
+                            return response()->json(['message' => "Lỗi dòng {$item['line_index']}: Thiếu Tên hoặc Giá cho hàng nhập tay."], 422);
+                        }
+                        $itemName = $item['name'];
+                        $price    = $item['price'];
+                        $unit     = 'CAI';
+                    }
+
+                    // Insert Original (Lưu Note từ Excel vào dòng này luôn nếu muốn)
+                    \App\Models\OrderOriginal::create([
+                        'DocumentNo'  => $newDocumentNo,
+                        'PostingDate' => now(),
+                        'IntendedUse' => $orderIntendedUse, // ✅
+                        'Supplier'    => $supplierName,
+                        'ItemCode'    => $cleanCode,
+                        'Variant'     => $variant,
+                        'ItemName'    => $itemName,
+                        'Unit'        => $unit,
+                        'Quantity'    => $item['qty'],
+                        'Price'       => $price,
+                        'Status'      => 1,
+                        'Note'        => $orderNote,       // ✅ Fix lỗi NULL Note
+                        'CreatedBy'   => $user->code,
+                        'CreatedDate' => now(),
+                    ]);
+
+                    // Insert Line
+                    \App\Models\OrderItem::create([
+                        'DocumentNo'  => $newDocumentNo,
+                        'Line'        => ($i + 1),
+                        'PostingDate' => now(),
+                        'ItemCode'    => $cleanCode,
+                        'Variant'     => $variant,
+                        'ItemName'    => $itemName,
+                        'Unit'        => $unit,
+                        'Quantity'    => $item['qty'],
+                        'QuantityOld' => $item['qty'],
+                        'Price'       => $price,
+                        'Status'      => 1,
+                        'CreatedBy'   => $user->code,
+                        'CreatedDate' => now(),
+                    ]);
+                }
+                $createdOrders[] = $newDocumentNo;
             }
 
+            DB::connection('sqlsrv')->commit();
             return response()->json([
-                'message' => 'Import thành công',
-                'orders'  => $results
+                'message' => 'Import thành công ' . count($createdOrders) . ' đơn hàng.',
+                'orders'  => $createdOrders
             ]);
         } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Lỗi khi import Excel',
-                'error' => $e->getMessage(),
-            ], 500);
+            DB::connection('sqlsrv')->rollBack();
+            return response()->json(['message' => 'Lỗi import: ' . $e->getMessage()], 500);
         }
     }
 }

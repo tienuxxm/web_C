@@ -35,7 +35,7 @@ export interface OrderPayload {
   intended_use: string;
   industry_id: number | string;
   supplier_name: string;
-  items: { productCode: string; quantity: number, variant: string }[];
+  items: { productCode: string; quantity: number, variant: string ,productName :string,price:number}[];
   status: number;
   status_name: string;
   estimated_delivery: string;
@@ -286,7 +286,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       items: formData.items.map(it => ({
         variant: it.color || '',
         productCode: it.productCode || it.productId,
-        quantity: it.quantity
+        productName:it.productName,
+        quantity: it.quantity,
+        price:it.price
+        
       })),
       status_name: formData.statusName,
       status: formData.status, // Mặc định là 'draft' nếu không có
@@ -307,14 +310,28 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   };
 
   const addItem = () => {
+    // Logic sinh mã cho ngành 18
+    let nextCode = '';
+    const isManual = String(selectedCategoryId) === '18';
+
+    if (isManual) {
+      // Lấy index tiếp theo dựa trên số lượng item hiện có
+      const nextIndex = formData.items.length + 1;
+      // Format: 18 + 0000 + 0001 (4 số đuôi)
+      nextCode = `180000${String(nextIndex).padStart(4, '0')}`;
+    }
+
     const newItem: OrderItem = {
-      productId: '',
-      productCode: '',
+      productId: isManual ? `MANUAL_${Date.now()}` : '', // ID giả để React làm key
+      productCode: nextCode,
       productName: '',
       quantity: 1,
       price: 0,
-      color: ''
+      color: isManual ? '000' : '', // Mặc định màu 000
+      // Thêm unit nếu cần
+      // unit: 'Cái' 
     };
+
     setFormData(prev => ({
       ...prev,
       items: [...prev.items, newItem]
@@ -465,10 +482,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         allowedTypes.push(10); // Trả về
       }
       // B2. Đã Chốt (13)
-      else if (currentStatus === 7) {
+      else if (currentStatus === 8) {
         allowedTypes.push(2);  // Gửi duyệt
-        allowedTypes.push(17); // Trả về
-        // allowedIds.push(14); // Gộp (Logic này thường nằm ở nút riêng ngoài bảng)
       }
       // B3. Sếp đã duyệt (3)
       else if (currentStatus === 3) {
@@ -482,7 +497,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
     // --- C. GIÁM ĐỐC (CEO) ---
     else if (role === 'Leader') {
-      if (currentStatus === 8) {
+      if (currentStatus === 2) {
         allowedTypes.push(3); // Duyệt
         allowedTypes.push(5); // Từ chối
       }
@@ -499,7 +514,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   // const isKinhDoanh = currentUser.department?.name_department === 'KINH_DOANH';
   const ALLOWED_DEPARTMENTS = ['CUNG_UNG', 'HANH_CHANH']; const isGiamDoc = currentUser.role.name_role === 'giam_doc';
   const canAddItem = ALLOWED_DEPARTMENTS.includes(currentUser?.department?.name_department);
-const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
+  const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
   const canEditQuantityOnly = !readOnly && (canAddItem || isGiamDoc);
 
 
@@ -630,7 +645,7 @@ const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.sta
               
              )} */}
               {
-                !readOnly && (
+                !readOnly && canEditDetails &&(
                   <button
                     type="button"
                     onClick={addItem}
@@ -685,27 +700,39 @@ const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.sta
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
                     <div className="sm:col-span-5 ">
                       <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Product</label>
-                      {readOnly ? (
-                        <div className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base">
-                          {item.productName}
-                        </div>
+                      {String(selectedCategoryId) === '18' ? (
+                        // Hien thi Input nhap ten
+                        <input
+                          type="text"
+                          placeholder="Nhập tên sản phẩm..."
+                          value={item.productName}
+                          disabled={readOnly}
+                          onChange={(e) => updateItem(index, 'productName', e.target.value)}
+                          className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-yellow-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 text-sm"
+                        />
                       ) : (
-                        <select
-                          // Sử dụng giá trị currentValue đã tính toán ở trên
-                          value={currentValue}
-                          disabled={!canEditDetails}
-                          onChange={(e) => updateItem(index, 'productId', e.target.value)}
-                          className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-                        >
-                          <option value="">Select a product</option>
-                          {products.map(product => (
-                            // Sử dụng ID làm Key và Value để đảm bảo duy nhất
-                            <option key={product.id} value={product.id}>
-                              [{product.code}] - {product.name} {product.color ? `(${product.color})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                        readOnly ? (
+                          <div className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base">
+                            {item.productName}
+                          </div>
+                        ) : (
+                          <select
+                            // Sử dụng giá trị currentValue đã tính toán ở trên
+                            value={currentValue}
+                            disabled={!canEditDetails}
+                            onChange={(e) => updateItem(index, 'productId', e.target.value)}
+                            className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                          >
+                            <option value="">Select a product</option>
+                            {products.map(product => (
+                              // Sử dụng ID làm Key và Value để đảm bảo duy nhất
+                              <option key={product.id} value={product.id}>
+                                [{product.code}] - {product.name} {product.color ? `(${product.color})` : ''}
+                              </option>
+                            )
+                            )}
+                          </select>
+                        ))}
 
                     </div>
 
@@ -718,7 +745,7 @@ const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.sta
                         min="1"
                         value={item.quantity}
                         onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                        disabled={canEditQuantityOnly}
+                        disabled={!canEditDetails}
                         className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
                       />
                     </div>
@@ -726,11 +753,11 @@ const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.sta
                       <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Price</label>
                       <input
                         type="number"
-                        step="0.01"
                         value={item.price}
-                        disabled
+                        disabled={String(selectedCategoryId) !== '18'||!canEditDetails}
                         onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                        className={`w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base
+                        ${String(selectedCategoryId) === '18' ? 'border-yellow-600/50' : ''} `}
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -742,6 +769,7 @@ const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.sta
                         className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
                       />
                     </div>
+                 
                     <div className="flex justify-center sm:col-span-1">
 
                       <button
@@ -818,7 +846,7 @@ const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.sta
                 })}
               </select>
             </div>
-         
+
             <div>
               <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Estimated Delivery</label>
               <input

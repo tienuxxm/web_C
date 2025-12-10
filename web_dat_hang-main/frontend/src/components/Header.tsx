@@ -174,7 +174,7 @@ const searchAll = async (query: string) => {
 
       {/* Center Section - Search */}
       <div className="flex-1 max-w-2xl mx-2 sm:mx-8">
-        <div className="relative search-dropdown ">
+        {/* <div className="relative search-dropdown ">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400" />
           </div>
@@ -211,14 +211,14 @@ const searchAll = async (query: string) => {
             </div>
           )}
 
-        </div>
+        </div> */}
       </div>
 
       {/* Right Section */}
       <div className="flex items-center space-x-4">
         {/* Notifications */}
         <div className="relative">
-          <button
+          {/* <button
             onClick={handleToggleNotifications}
             className="relative p-2 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-white transition-all duration-200"
           >
@@ -230,10 +230,10 @@ const searchAll = async (query: string) => {
             )}
             
 
-          </button>
+          </button> */}
 
           {/* Notifications Dropdown */}
-          {showNotifications && (
+          {/* {showNotifications && (
             <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-xl shadow-2xl overflow-hidden">
               <div className="p-4 border-b border-gray-700/50">
                 <h3 className="text-white font-semibold">Notifications</h3>
@@ -256,7 +256,7 @@ const searchAll = async (query: string) => {
                 ))}
               </div>
             </div>
-          )}
+          )} */}
         </div>
 
         {/* User Profile */}

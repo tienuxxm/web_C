@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Search, Filter, RotateCcw, Edit, Trash2, Eye, Package, Clock, CheckCircle, XCircle, AlertCircle, GitMerge } from 'lucide-react';
+import { Plus, Search, RotateCcw, Edit, Trash2, Eye, Package, Clock, CheckCircle, XCircle, AlertCircle, GitMerge ,Upload} from 'lucide-react';
 import api from '../../services/api';
 
 import { OrderPayload, OrderFromAPI } from './OrderModal';
@@ -55,17 +55,17 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const location = useLocation();
+  const [importIndustryId, setImportIndustryId] = useState<string>('');
   const { searchTerm: initialSearch } = location.state || {};
   const [search, setSearch] = useState(initialSearch || '');
-  const [totalOrders, setTotalOrders] = useState(0);
   const [monthlyOrders, setMonthlyOrders] = useState<any[]>([]);
   const [yearlyOrders, setYearlyOrders] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
+  const [categories, setCategories] = useState<{ id: number, name: string }[]>([]);
 
 
   const [stats, setStats] = useState({
@@ -146,7 +146,19 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
       console.error("Lỗi tải thống kê", error);
     }
   };
-
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        // Giả sử API lấy danh mục là /categories
+        const res = await api.get('/categories');
+        // Map dữ liệu tùy API của bạn (ví dụ: res.data.categories)
+        setCategories(res.data.categories || []);
+      } catch (e) {
+        console.error("Lỗi tải danh mục", e);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
@@ -356,8 +368,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
           items: orderData.items.map(it => ({
             productCode: it.productCode,
             quantity: it.quantity,
-            // Backend ưu tiên 'variant', nhưng cũng nhận 'color'
-            // Gửi cả 2 hoặc 'variant' cho chuẩn logic mới
+            productName:it.productName,
+            price:it.price,
             color: it.variant || '',
           })),
         };
@@ -499,26 +511,55 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
     }
   };
 
-  const handleImportOrders = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  // 2. Hàm xử lý Import
+  const handleImportOrders = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
+    // Validate: Chưa chọn ngành thì chặn ngay
+    if (!importIndustryId) {
+      toast.error("Vui lòng chọn Ngành hàng trước!");
+      event.target.value = ''; // Reset input file
+      return;
+    }
+
+    // Hiển thị loading
+    MySwal.fire({
+      title: 'Đang xử lý...',
+      text: 'Đang đọc file Excel và tạo đơn hàng...',
+      didOpen: () => MySwal.showLoading()
+    });
 
     try {
-      const res = await api.post('/orders/import-multiple', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('industry_id', importIndustryId); // 👈 QUAN TRỌNG
 
-      toast.success(`Đã tạo ${res.data.orders.length} đơn hàng`);
-      fetchOrders(); // gọi lại danh sách nếu cần
-    } catch (err: any) {
-      console.error('❌ Import lỗi:', err);
-      toast.error(err.response?.data?.message || 'Import thất bại');
+      // Gọi API
+      const res = await api.post('/orders/import', formData);
+
+      // Thành công
+      await MySwal.fire({
+        icon: 'success',
+        title: 'Thành công!',
+        text: res.data.message
+      });
+      
+      // Reload lại danh sách đơn hàng nếu cần
+      // fetchOrders(); 
+
+    } catch (error: any) {
+      console.error(error);
+      const msg = error.response?.data?.message || "Lỗi khi import file";
+      
+      await MySwal.fire({
+        icon: 'error',
+        title: 'Lỗi Import',
+        text: msg
+      });
     } finally {
-      // reset file input để chọn lại được cùng file nếu cần
-      e.target.value = '';
+       // Reset input để lần sau chọn lại file đó vẫn ăn sự kiện onChange
+       event.target.value = ''; 
     }
   };
 
@@ -811,6 +852,20 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
           )}
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+           {/* 1. Select Ngành hàng */}
+            <select 
+                value={importIndustryId}
+                onChange={(e) => setImportIndustryId(e.target.value)}
+                className="px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm focus:ring-2 focus:ring-green-500 outline-none"
+            >
+                <option value="">-- Chọn ngành nhập Excel --</option>
+                {/* Map danh sách categories của bạn */}
+                {categories.map((cat: any) => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+            </select>
+
+            {/* 2. Input File ẩn */}
             <input
               type="file"
               ref={fileInputRef}
@@ -818,11 +873,21 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
               accept=".csv,.txt,.xlsx"
               className="hidden"
             />
+
+            {/* 3. Nút bấm kích hoạt */}
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
+              onClick={() => {
+                  // Kiểm tra kỹ lần nữa trước khi mở cửa sổ chọn file
+                  if(!importIndustryId) {
+                      toast.error("Vui lòng chọn Ngành hàng trước!");
+                      return;
+                  }
+                  fileInputRef.current?.click();
+              }}
+              className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-lg transition-all shadow-lg hover:shadow-green-500/30"
             >
-              Import
+              <Upload className="w-4 h-4" />
+              <span>Import Excel</span>
             </button>
             <select
               value={selectedStatus}

@@ -102,7 +102,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
         </div>
 
         {/* Remember Me & Forgot Password */}
-        <div className="flex items-center justify-between">
+        {/* <div className="flex items-center justify-between">
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -116,7 +116,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
           >
             Forgot password?
           </a>
-        </div>
+        </div> */}
 
         {/* Submit Button */}
         <button
@@ -144,7 +144,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
       </form>
 
       {/* Sign Up Link */}
-      <div className="mt-8 text-center">
+      {/* <div className="mt-8 text-center">
         <p className="text-gray-400">
           Don't have an account?{' '}
           <button
@@ -155,7 +155,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
             Sign up here
           </button>
         </p>
-      </div>
+      </div> */}
     </div>
   );
 };
