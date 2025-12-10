@@ -14,53 +14,79 @@ class MergeOrderController extends Controller
     public function show($id)
     {
         try {
-            // Eager load items
-            $order = MergeOrder::with(['items', 'statusInfo'])
-                ->where('DocumentNo', $id)
-                ->firstOrFail();
+            // 1. Eager load:
+            // - items: Chi tiết đơn gộp (để tính tiền)
+            // - statusInfo: Tên trạng thái
+            // - originalOrderItems.order: Để lấy Supplier từ đơn gốc
+            $order = MergeOrder::with([
+                'items', 
+                'statusInfo', 
+                'originalOrderItems.order' 
+            ])
+            ->where('DocumentNo', $id)
+            ->firstOrFail();
 
+            // 2. Tính tổng tiền (dựa trên các dòng của đơn gộp)
             $subtotal = $order->items->sum(function ($item) {
                 return $item->Quantity * $item->Price;
             });
 
-            // Format dữ liệu GIỐNG Y HỆT OrderController để OrderModal tái sử dụng được
-            $formattedOrder = [
-                'id' => $order->DocumentNo,
-                'order_number' => $order->DocumentNo,
-                'supplier_name' => '', // Merge có thể không có supplier, hoặc lấy từ Industry
-                'intended_use' => 'Đơn gộp',
-                'status' => (int)$order->Status,
-                'status_name' => $order->statusInfo->Name, // Hàm helper bên dưới
-                'order_date' => $order->PostingDate,
-                'estimated_delivery' => $order->ShipmentDate,
-                'notes' => $order->Note,
-                'subtotal' => $subtotal,
-                'total_amount' => $subtotal,
-                'industry_id' => $order->Industry,
+            // 3. Logic lấy Nhà Cung Cấp & Mục Đích
+            // Mặc định
+            $supplierName = 'N/A'; // Hoặc 'Nhiều nguồn'
+            $intendedUse  = 'Gộp đơn';
 
-                // ITEMS
+            // Lấy dòng đơn gốc đầu tiên thuộc về đơn gộp này
+            $firstOriginalItem = $order->originalOrderItems->first();
+
+            // Nếu tìm thấy đơn gốc -> Lấy thông tin Header của nó
+            if ($firstOriginalItem && $firstOriginalItem->order) {
+                $originalHeader = $firstOriginalItem->order;
+                
+                $supplierName = $originalHeader->Supplier ?? 'N/A';
+                $intendedUse  = $originalHeader->IntendedUse ?? 'Gộp đơn';
+            }
+
+            // 4. Format dữ liệu trả về
+            $formattedOrder = [
+                'id'                 => $order->DocumentNo,
+                'order_number'       => $order->DocumentNo,
+                
+                // Dữ liệu lấy từ logic ở bước 3
+                'supplier_name'      => $supplierName, 
+                'intended_use'       => $intendedUse,
+                
+                'status'             => (int)$order->Status,
+                'status_name'        => $order->statusInfo->Name ?? 'Không xác định',
+                'order_date'         => $order->PostingDate,
+                'estimated_delivery' => $order->ShipmentDate,
+                'notes'              => $order->Note,
+                'subtotal'           => $subtotal,
+                'total_amount'       => $subtotal,
+                'industry_id'        => $order->Industry,
+                'created_by'         => $order->CreatedBy,
+
+                // ITEMS (Chi tiết đơn gộp)
                 'items' => $order->items->map(function ($item) {
                     return [
-                        'id' => $item->ID, // ID dòng merge
+                        'id'           => $item->ID, // ID dòng merge
                         'product_code' => $item->ItemCode,
                         'product_name' => $item->ItemName,
-                        'quantity' => (float)$item->Quantity,
-                        'unit_price' => (float)$item->Price,
-                        'unit' => $item->Unit,
-                        'total' => (float)($item->Quantity * $item->Price),
+                        'quantity'     => (float)$item->Quantity,
+                        'unit_price'   => (float)$item->Price,
+                        'unit'         => $item->Unit,
+                        'total'        => (float)($item->Quantity * $item->Price),
 
                         // Thông tin product để hiển thị trong Modal
                         'product' => [
-                            'id' => $item->ItemCode,
-                            'code' => $item->ItemCode,
-                            'name' => $item->ItemName,
+                            'id'    => $item->ItemCode,
+                            'code'  => $item->ItemCode,
+                            'name'  => $item->ItemName,
                             'price' => (float)$item->Price,
                             'color' => $item->Variant,
-                            // Merge Item không cần categoryId để load lại list product vì thường không cho sửa, chỉ cho Tách
                         ]
                     ];
                 }),
-                'created_by' => $order->CreatedBy,
             ];
 
             return response()->json(['order' => $formattedOrder]);
@@ -184,16 +210,22 @@ class MergeOrderController extends Controller
                     return $item->Quantity * $item->Price;
                 });
 
-                // Lấy tên Supplier từ item đầu tiên (vì Merge Header không lưu Supplier)
-                // Hoặc bạn có thể để trống
-                $firstItem = $order->items->first();
-                $supplierName = $firstItem ? ($firstItem->product ? $firstItem->product->supplier_name : 'N/A') : 'N/A';
+                $firstOriginalItem = $order->originalOrderItems->load('order')->first();
+
+    // 2. Lấy thông tin Supplier và IntendedUse từ Header của đơn gốc
+                $supplierName = 'N/A';
+                $intendedUse = 'Gộp đơn';
+
+                if ($firstOriginalItem && $firstOriginalItem->order) {
+                    $supplierName = $firstOriginalItem->order->Supplier ?? 'N/A';
+                    $intendedUse  = $firstOriginalItem->order->IntendedUse ?? 'Gộp đơn';
+                }
 
                 return [
                     'id' => $order->DocumentNo,
                     'order_number' => $order->DocumentNo,
-                    'supplier_name' => "Đơn Gộp (Nhiều nguồn)", // Hoặc logic lấy tên NCC
-                    'intended_use' => 'Gộp đơn',
+                    'supplier_name' => $supplierName, // Hoặc logic lấy tên NCC
+                    'intended_use' => $intendedUse,
                     'customer_name' => $order->CreatedBy,
                     'created_at' => $order->CreatedDate,
                     'order_date' => $order->PostingDate, // Để hiển thị cột Date

@@ -25,8 +25,10 @@ class OrderItem extends Model
         'Price', 
         'Status', 
         'CreatedBy',
-        'CreatedDate'
+        'CreatedDate',
+        'MergeHeaderID'
     ];
+    
 
     public function order()
     {

@@ -20,4 +20,10 @@ class MergeOrderItem extends Model
     {
         return $this->belongTo(MergeOrder::class,'DocumentNo','DocumentNo');
     }
+    // Thêm quan hệ tới dòng đơn hàng gốc
+    public function originalLine()
+    {
+        // 'ID' là khóa chính của OrderItem (API$Purchase Line)
+        return $this->belongsTo(\App\Models\OrderItem::class, 'PurchaseLineID', 'ID');
+    }
 }

@@ -31,4 +31,10 @@ class MergeOrder extends Model
     {
         return $this->statusInfo ;
     }
+    public function originalOrderItems()
+    {
+        // 'MergeHeaderID' là khóa ngoại trên bảng API$Purchase Line
+        // 'DocumentNo' là khóa chính của bảng API$Merge Header
+        return $this->hasMany(OrderItem::class, 'MergeHeaderID', 'DocumentNo');
+    }
 }

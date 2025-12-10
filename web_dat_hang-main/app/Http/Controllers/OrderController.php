@@ -625,7 +625,7 @@ class OrderController extends Controller
         // =================================================================
 
         // CASE A: SALES / KINH DOANH
-        if ($user->isRole('Sales') ) {
+        if ($user->isRole('Sales')) {
             // SQL sẽ hiểu: WHERE [API$Purchase Header].[CreatedBy] = ...
             $query->where("$tbl.CreatedBy", $user->code);
         }
@@ -709,14 +709,14 @@ class OrderController extends Controller
         if ($orders->count() === 0) {
             return response()->json(['message' => 'Không có đơn hàng hợp lệ (Phải là status Chốt).'], 422);
         }
-        
+
         if ($orders->pluck('Supplier')->unique()->count() > 1) {
             return response()->json([
                 'message' => 'Các đơn hàng được chọn KHÔNG cùng Nhà Cung Cấp. Vui lòng kiểm tra lại.'
             ], 422);
         }
         if ($orders->pluck('Industry')->unique()->count() > 1) {
-             return response()->json([
+            return response()->json([
                 'message' => 'Các đơn hàng được chọn KHÔNG cùng Ngành hàng.'
             ], 422);
         }
@@ -853,23 +853,22 @@ class OrderController extends Controller
     public function split(Request $request)
     {
         $user = JWTAuth::user();
-
-        // Input: Mã đơn gộp hiện tại + Danh sách Line ID muốn tách ra
-        $currentMergeId = $request->input('merge_id'); // MP25120001
-        $lineIdsToSplit = $request->input('line_ids'); // [ID của dòng Xanh]
+        $currentMergeId = $request->input('merge_id');
+        $lineIdsToSplit = $request->input('line_ids'); // [ID của dòng Merge Line]
 
         $currentOrder = MergeOrder::where('DocumentNo', $currentMergeId)->firstOrFail();
 
-        // Chỉ được tách khi đang ở trạng thái Nháp (8)
         if ($currentOrder->Status != 8) {
             return response()->json(['message' => 'Chỉ được tách đơn khi đang ở trạng thái Nháp.'], 422);
         }
 
         DB::connection('sqlsrv')->beginTransaction();
         try {
-            // 1. Tạo đơn gộp MỚI (MP25120002) để chứa hàng bị tách
+            // 1. Tạo đơn gộp MỚI
             $prefix = 'MP' . date('ym');
-            $lastMerge = MergeOrder::where('DocumentNo', 'like', $prefix . '%')->orderBy('DocumentNo', 'desc')->lockForUpdate()->first();
+            $lastMerge = MergeOrder::where('DocumentNo', 'like', $prefix . '%')
+                ->orderBy('DocumentNo', 'desc')
+                ->lockForUpdate()->first();
             $nextNum = $lastMerge ? intval(substr($lastMerge->DocumentNo, -4)) + 1 : 1;
             $newDocumentNo = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
 
@@ -878,22 +877,49 @@ class OrderController extends Controller
                 'PostingDate'  => now(),
                 'ShipmentDate' => $currentOrder->ShipmentDate,
                 'Industry'     => $currentOrder->Industry,
-                'Status'       => 8, // Vẫn là Nháp
+                'Status'       => 8,
                 'Note'         => "Tách ra từ đơn: " . $currentMergeId,
                 'CreatedBy'    => $user->code,
                 'CreatedDate'  => now(),
             ]);
 
-            // 2. Chuyển các dòng đã chọn sang đơn mới
-            // Thay vì xóa, ta update DocumentNo của nó sang đơn mới
+            // 2. Lấy danh sách các dòng Merge Line cần tách để xử lý Purchase Line tương ứng
+            // (Bước này quan trọng để tìm ra ID của dòng gốc)
+            $mergeLines = MergeOrderItem::whereIn('ID', $lineIdsToSplit)
+                ->where('DocumentNo', $currentMergeId)
+                ->get();
+
+            // Thu thập ID của các dòng gốc (Purchase Line) cần update
+            $originalLineIds = [];
+            foreach ($mergeLines as $mLine) {
+                // PurchaseLineID có thể là dạng chuỗi gộp "1326-1325" hoặc đơn lẻ "1326"
+                // Ta cần tách chuỗi này ra để lấy ID thực
+                $ids = explode('-', $mLine->PurchaseLineID);
+                foreach ($ids as $id) {
+                    if (is_numeric($id)) {
+                        $originalLineIds[] = $id;
+                    }
+                }
+            }
+
+            // 3. Cập nhật bảng Merge Line (Chuyển nhà cho dòng gộp) - Code cũ của bạn
             MergeOrderItem::whereIn('ID', $lineIdsToSplit)
                 ->where('DocumentNo', $currentMergeId)
                 ->update([
-                    'DocumentNo' => $newDocumentNo, // Chuyển nhà
-                    'Line' => DB::raw("Line"), // Có thể cần đánh lại số Line nếu kỹ tính
+                    'DocumentNo' => $newDocumentNo,
+                    'Line' => DB::raw("Line"),
                     'ModifiedBy' => $user->code,
                     'ModifiedDate' => now()
                 ]);
+
+            // 4. [MỚI] Cập nhật bảng OrderItem (Chuyển MergeHeaderID cho dòng gốc)
+            // - Update API$Purchase Line
+            if (!empty($originalLineIds)) {
+                \App\Models\OrderItem::whereIn('ID', $originalLineIds)
+                    ->update([
+                        'MergeHeaderID' => $newDocumentNo // Trỏ về đơn gộp mới
+                    ]);
+            }
 
             DB::connection('sqlsrv')->commit();
 
@@ -907,7 +933,6 @@ class OrderController extends Controller
             return response()->json(['message' => 'Lỗi tách đơn: ' . $e->getMessage()], 500);
         }
     }
-
     public function mergedByMonth()
     {
         $orders = Order::with('items.product')
