@@ -161,14 +161,14 @@ const searchAll = async (query: string) => {
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30">
             <img 
-              src="/assets/brand_1.webp" 
+              src="web_dat_hang-main/public/assets/Bitex_logo.png" 
               alt="BITEX" 
               className="h-6 sm:h-8 w-auto"
             />
           </div>
-          {!sidebarCollapsed && (
+          {/* {!sidebarCollapsed && (
             <span className="text-lg sm:text-xl font-bold text-white hidden sm:block">Dashboard</span>
-          )}
+          )} */}
         </div>
       </div>
 
@@ -215,7 +215,7 @@ const searchAll = async (query: string) => {
       </div>
 
       {/* Right Section */}
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-4 ml-auto">
         {/* Notifications */}
         <div className="relative">
           {/* <button

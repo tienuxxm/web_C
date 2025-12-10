@@ -69,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       // department: ['CUNG_UNG','KINH_DOANH','HANH_CHANH','Công nghệ thông tin (IT)','Cung ứng','Hành chính - Miền Nam'],
       roles: ['truong_phong', 'pho_phong', 'nhan_vien_chinh_thuc','giam_doc','Administrator','Supply','Sales','Leader'],
       children: [
-        { id: 'orders-all', label: 'All Orders', icon: <FileText className="h-4 w-4" />, page: 'orders',roles:['Sales'] },
+        { id: 'orders-all', label: 'All Orders', icon: <FileText className="h-4 w-4" />, page: 'orders',roles:['Sales','Supply'] },
         { id: 'orders-monthly', label: 'Monthly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMonthly',roles:[] },
         { id: 'orders-yearly', label: 'Yearly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersYearly',roles:[] },
         { id: 'orders-merged', label: 'Merged Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMerged' },

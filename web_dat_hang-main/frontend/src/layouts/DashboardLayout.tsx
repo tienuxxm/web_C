@@ -16,7 +16,7 @@ export type Pagetype =  'dashboard' | 'orders' | 'customers' | 'products' | 'rep
 export default function DashboardLayout() {
   const storedUser = localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
-  const [currentPage, setCurrentPage] = useState<Pagetype>('orders');
+  const [currentPage, setCurrentPage] = useState<Pagetype>('ordersMerged');
 
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);

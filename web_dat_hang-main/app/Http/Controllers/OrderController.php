@@ -625,7 +625,7 @@ class OrderController extends Controller
         // =================================================================
 
         // CASE A: SALES / KINH DOANH
-        if ($user->isRole('Sales') || $user->isInDepartment('Kinh doanh')) {
+        if ($user->isRole('Sales') ) {
             // SQL sẽ hiểu: WHERE [API$Purchase Header].[CreatedBy] = ...
             $query->where("$tbl.CreatedBy", $user->code);
         }
@@ -661,14 +661,14 @@ class OrderController extends Controller
         }
 
         // 2. CUNG ỨNG / HÀNH CHÍNH
-        elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính')) {
+        elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
             $pending    = (clone $query)->whereIn("$tbl.Status", [1, 3])->count();
             $processing = (clone $query)->whereIn("$tbl.Status", [2, 4, 8])->count();
         }
 
         // 3. LEADER / GIÁM ĐỐC
         elseif ($user->isRole('Leader') || $user->isRole('giam_doc')) {
-            $pending    = (clone $query)->where("$tbl.Status", 2)->count();
+            $pending    = (clone $query)->where("$tbl.Status", [2])->count();
             $processing = (clone $query)->whereIn("$tbl.Status", [3, 4, 11])->count();
         }
 

@@ -13,16 +13,16 @@ export const getStatConfig = (
 ): { pending: StatConfig; processing: StatConfig } => {
     
   // --- 1. KINH DOANH (SALES) ---
-  if (dept === 'KINH_DOANH' || role === 'Sales') {
+  if ( role === 'Sales') {
     return {
       pending: {
-        label: 'Đơn Nháp / Sửa đổi',
+        label: 'Pending',
         description: 'Đơn cần hoàn thiện gửi đi',
         color: 'bg-yellow-500/10 text-yellow-500',
         icon: AlertCircle
       },
       processing: {
-        label: 'Đang chờ xử lý',
+        label: 'Processing',
         description: 'Đã gửi Cung ứng/Sếp',
         color: 'bg-blue-500/10 text-blue-500',
         icon: Clock
@@ -31,16 +31,16 @@ export const getStatConfig = (
   }
 
   // --- 2. CUNG ỨNG (SUPPLY) ---
-  if (dept === 'Cung ứng' || dept === 'CUNG_UNG') {
+  if (role === 'Supply' ) {
     return {
       pending: {
-        label: 'Cần tiếp nhận & Đặt hàng',
+        label: 'Pending',
         description: 'Đơn mới từ Sales hoặc Đã duyệt',
         color: 'bg-red-500/10 text-red-500', // Màu đỏ để báo động việc cần làm ngay
         icon: AlertCircle
       },
       processing: {
-        label: 'Đang tiến hành',
+        label: 'Processing',
         description: 'Chờ sếp duyệt hoặc chờ hàng về',
         color: 'bg-indigo-500/10 text-indigo-500',
         icon: TrendingUp
@@ -49,16 +49,16 @@ export const getStatConfig = (
   }
 
   // --- 3. GIÁM ĐỐC (LEADER) ---
-  if (role === 'giam_doc' || role === 'Leader') {
+  if ( role === 'Leader') {
     return {
       pending: {
-        label: 'Chờ duyệt',
+        label: 'Pending',
         description: 'Đơn cần phê duyệt ngay',
         color: 'bg-orange-500/10 text-orange-500',
         icon: AlertCircle
       },
       processing: {
-        label: 'Đang thực hiện',
+        label: 'Processing',
         description: 'Đơn đã duyệt, đang chạy',
         color: 'bg-emerald-500/10 text-emerald-500',
         icon: CheckCircle2
@@ -68,8 +68,8 @@ export const getStatConfig = (
 
   // --- MẶC ĐỊNH ---
   return {
-    pending: { label: 'Chờ xử lý', description: 'Pending', color: 'bg-gray-500/10', icon: Clock },
-    processing: { label: 'Đang thực hiện', description: 'Processing', color: 'bg-blue-500/10', icon: TrendingUp }
+    pending: { label: 'pending', description: 'Pending', color: 'bg-gray-500/10', icon: Clock },
+    processing: { label: 'processing', description: 'Processing', color: 'bg-blue-500/10', icon: TrendingUp }
   };
 };
 
