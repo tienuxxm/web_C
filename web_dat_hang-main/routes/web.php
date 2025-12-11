@@ -1,7 +1,12 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\File;
 
-Route::any('/{any}', function () {
-    return file_get_contents(public_path('index.html'));
-})->where('any', '.*');
+Route::get('/{any?}', function () {
+    $path = public_path('index.html');
+    if (!File::exists($path)) {
+        return "Vui lòng chạy 'npm run build'!";
+    }
+    return File::get($path);
+})->where('any', '^(?!api|assets|build).*$'); 

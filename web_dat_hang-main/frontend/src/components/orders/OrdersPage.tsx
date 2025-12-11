@@ -668,8 +668,6 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
       toast.error(err.response?.data?.message || 'Xuất thất bại');
     }
   };
-  const [pendingOrders, setPendingOrders] = useState(0);
-  const [processingOrders, setProcessingOrders] = useState(0);
 
   const role = currentUser?.role?.name_role;
   const dept = currentUser?.department?.name_department;

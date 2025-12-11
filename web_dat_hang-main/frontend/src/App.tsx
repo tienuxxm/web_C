@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {  Routes, Route, Navigate } from 'react-router-dom';
 import AuthPage from './pages/AuthPage';
 import DashboardLayout from './layouts/DashboardLayout';
 
@@ -9,7 +9,6 @@ export default function App() {
     token ? children : <Navigate to="/" />;
 
   return (
-    <BrowserRouter>
       <Routes>
         <Route path="/" element={<AuthPage />} />
         <Route
@@ -23,6 +22,5 @@ export default function App() {
         {/* Nếu URL không khớp, đưa về trang login */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
-    </BrowserRouter>
   );
 }

@@ -1,10 +1,19 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite'; // Nhớ import loadEnv
 import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  optimizeDeps: {
-    exclude: ['lucide-react'],
-  },
+export default defineConfig(({ mode }) => {
+  // Load các biến môi trường
+
+  return {
+    plugins: [react()],
+    // 👇 Tự động đổi base tùy theo môi trường
+    base: '/web_dat_hang-main/',
+    optimizeDeps: {
+      exclude: ['lucide-react'],
+    },
+    build: {
+      outDir: '../public',
+      emptyOutDir: false,
+    }
+  };
 });
