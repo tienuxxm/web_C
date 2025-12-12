@@ -421,7 +421,7 @@ class OrderController extends Controller
                 }
                 // Có thể lọc thêm theo Role ở đây nếu muốn bảo mật phía server
                 // VD: Nếu là Sales chỉ lấy đơn status 1, 10
-                $query->whereIn('Status', [1, 10, 7]);
+                $query->whereIn('Status', [1, 10]);
             }
 
             // Nhóm 'cancelled'

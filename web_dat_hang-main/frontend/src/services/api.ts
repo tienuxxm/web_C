@@ -2,10 +2,9 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
 
 // Lấy base path, nếu không có thì mặc định là '/'
-
+const basePath = import.meta.env.VITE_BASE_PATH;
 const api = axios.create({
-baseURL: '/web_dat_hang-main/api',  
-  
+baseURL: basePath === '/' ? '/api' : `${basePath}api`,  
   headers: {
     'Content-Type': 'application/json',
   },

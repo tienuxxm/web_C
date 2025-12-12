@@ -161,7 +161,7 @@ const searchAll = async (query: string) => {
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30">
             <img 
-              src="web_dat_hang-main/public/assets/Bitex_logo.png" 
+              src="public/assets/Bitex_logo.png" 
               alt="BITEX" 
               className="h-6 sm:h-8 w-auto"
             />
