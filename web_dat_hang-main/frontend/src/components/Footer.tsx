@@ -48,7 +48,7 @@ const Footer: React.FC = () => {
 
       {/* Right Section */}
       <div className="text-gray-500 text-xs sm:text-sm">
-        © 2024 BITEX Company. All rights reserved.
+        © 2025 BITEX Company. All rights reserved.
       </div>
     </footer>
   );

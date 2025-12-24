@@ -72,7 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: 'orders-all', label: 'All Orders', icon: <FileText className="h-4 w-4" />, page: 'orders',roles:['Sales','Supply'] },
         { id: 'orders-monthly', label: 'Monthly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMonthly',roles:[] },
         { id: 'orders-yearly', label: 'Yearly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersYearly',roles:[] },
-        { id: 'orders-merged', label: 'Merged Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMerged' },
+        { id: 'orders-merged', label: 'Merged Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMerged' ,roles:['Supply','Leader']},
         { id: 'orders-completed', label: 'Completed', icon: <FileText className="h-4 w-4" />, page: 'ordersCompleted' },
         { id: 'orders-cancelled', label: 'Cancelled', icon: <FileText className="h-4 w-4" />, page: 'orders',roles: [] },
       ]

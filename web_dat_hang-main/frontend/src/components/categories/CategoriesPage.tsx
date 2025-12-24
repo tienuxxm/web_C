@@ -4,7 +4,6 @@ import CategoryModal from './CategoryModal';
 import api from '../../services/api'; 
 import { useEffect } from 'react';
 import toast from 'react-hot-toast';
-import Swal from 'sweetalert2';
 
 
 interface Category {
@@ -162,7 +161,6 @@ const CategoriesPage: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-xl sm:text-3xl font-bold text-white mb-2">Category Management</h1>
-          <p className="text-gray-400 text-sm sm:text-base">Manage product categories</p>
         </div>
         <button
           onClick={() => { fetchCategories()}}

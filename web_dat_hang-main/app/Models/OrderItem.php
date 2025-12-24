@@ -12,36 +12,22 @@ class OrderItem extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'ID',
-        'DocumentNo', 
-        'Line',           // Line No (Số dòng)
-        'PostingDate',    // Ngày tạo dòng
-        'ItemCode',       // Mã hàng
-        'Variant',        // Mã biến thể (Màu/Size)
-        'ItemName', 
-        'Unit',           // Đơn vị tính
-        'Quantity', 
-        'QuantityOld',    // Số lượng gốc (để so sánh)
-        'Price', 
-        'Status', 
-        'CreatedBy',
-        'CreatedDate',
+        'DocumentNo', 'Line', 'PostingDate', 'ItemCode', 'Variant', 
+        'ItemName', 'Unit', 'Quantity', 'QuantityOld', 'Price', 'Status',
+        'CreatedBy', 'CreatedDate', 
+        'ModifiedBy', 'ModifiedDate', 
         'MergeHeaderID'
     ];
-    
-
     public function order()
     {
         return $this->belongsTo(Order::class, 'DocumentNo', 'DocumentNo');
     }
     public function getAmountAttribute()
     {
-        // Nếu trong DB có cột Amount thì dùng, không thì tính: Price * Quantity
         return $this->attributes['Price'] * $this->attributes['Quantity'];
     }
     public function product()
     {
-        // Liên kết thông qua Mã sản phẩm (ItemCode)
         return $this->belongsTo(Product::class, 'ItemCode', 'code');
     }
 }

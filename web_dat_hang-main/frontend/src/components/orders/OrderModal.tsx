@@ -11,6 +11,7 @@ interface OrderItem {
   productCode: string;
   productName: string;
   quantity: number;
+  quantityOld:number;
   price: number;
   color: string;
 }
@@ -35,7 +36,7 @@ export interface OrderPayload {
   intended_use: string;
   industry_id: number | string;
   supplier_name: string;
-  items: { productCode: string; quantity: number, variant: string ,productName :string,price:number}[];
+  items: { productCode: string; quantity: number,quantityOld:number, variant: string ,productName :string,price:number}[];
   status: number;
   status_name: string;
   estimated_delivery: string;
@@ -69,6 +70,9 @@ export interface OrderFromAPI {
       color: string;
     };
     quantity: number;
+    quantityOld:number;
+    price: number;
+    variant: string;
   }[];
 }
 interface OrderModalProps {
@@ -177,8 +181,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
   useEffect(() => {
     if (order) {
-      // 🔍 DEBUG 1: In ra item gốc từ API để soi
-      console.log("DATA GỐC TỪ API (Items):", order.items);
 
       const detectedCategory = order.industry_id
         ? String(order.industry_id)
@@ -190,20 +192,16 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         orderNumber: order.orderNumber,
         supplier_name: order.supplierName ?? '',
 
-        // 👇 KHU VỰC QUAN TRỌNG NHẤT
         items: order.items.map((it: any) => {
-          // 🔍 DEBUG 2: In ra ID của từng dòng
-          console.log(
-
-            it.id
-          );
+         
 
           return {
-            id: it.id, // ✅ Gán giá trị tìm được vào đây
+            id: it.id, 
             productId: it.product.id,
             productCode: it.product.code,
             productName: it.product.name,
             quantity: it.quantity,
+            quantityOld:it.quantityOld,
             price: it.product.price,
             color: it.product.color
           };
@@ -288,6 +286,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         productCode: it.productCode || it.productId,
         productName:it.productName,
         quantity: it.quantity,
+        quantityOld:it.quantityOld,
         price:it.price
         
       })),
@@ -326,6 +325,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       productCode: nextCode,
       productName: '',
       quantity: 1,
+      quantityOld:1,
       price: 0,
       color: isManual ? '000' : '', // Mặc định màu 000
       // Thêm unit nếu cần
@@ -475,7 +475,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     }
 
     // --- B. CUNG ỨNG / HÀNH CHÍNH / IT ---
-    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam') {
+    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam'|| role === 'Supply') {
       // B1. Nhận đơn Mới (1)
       if (currentStatus === 1) {
         allowedTypes.push(7); // Chốt
@@ -505,17 +505,11 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
     // Lọc danh sách trạng thái
     const uniqueTypes = Array.from(new Set(allowedTypes));
-    console.log("✅ ALLOWED TYPES:", uniqueTypes);
     const result = allStatuses.filter(s => uniqueTypes.includes(s.Type));
-    console.log("🎯 FINAL OPTIONS:", result);
-
     return result;
   };
   // const isKinhDoanh = currentUser.department?.name_department === 'KINH_DOANH';
-  const ALLOWED_DEPARTMENTS = ['CUNG_UNG', 'HANH_CHANH']; const isGiamDoc = currentUser.role.name_role === 'giam_doc';
-  const canAddItem = ALLOWED_DEPARTMENTS.includes(currentUser?.department?.name_department);
   const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
-  const canEditQuantityOnly = !readOnly && (canAddItem || isGiamDoc);
 
 
 
@@ -610,7 +604,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
             <select
               value={selectedCategoryId}
               onChange={(e) => {
-                // Logic đổi ngành (chỉ chạy khi tạo mới)
                 const newVal = e.target.value;
                 setSelectedCategoryId(newVal);
                 setFormData(prev => ({ ...prev, items: [] })); // Reset items nếu đổi ngành
@@ -618,32 +611,18 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
               // 👇 QUAN TRỌNG: Khóa cứng nếu đang Sửa đơn hàng (có order)
               disabled={!!order}
               className={`w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white 
-                ${!!order ? 'opacity-60 cursor-not-allowed' : ''}`} // Thêm style cho rõ là đang khóa
-            >
+                ${!!order ? 'opacity-60 cursor-not-allowed' : ''}`} 
+                >
               <option value="">-- Chọn ngành hàng --</option>
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
-
-
-
-            {/* Hiển thị thông báo nhỏ nếu đang bị khóa */}
-            {!!order && (
-              <p className="text-xs text-yellow-500 mt-1">
-                * Không thể đổi ngành hàng khi đang sửa đơn.
-              </p>
-            )}
           </div>
-
-
           {/* Order Items */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base sm:text-lg font-semibold text-white">Order Items</h3>
-              {/* {canAddItem && isDraft  && !readOnly &&(
-              
-             )} */}
               {
                 !readOnly && canEditDetails &&(
                   <button
@@ -661,63 +640,32 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                   </button>
                 )
               }
-
-
             </div>
-
             {formData.items.map((item, index) => {
-              // --- 🛠️ PHẦN DEBUG LOGIC (Chèn vào đây) ---
-              // 1. Tìm sản phẩm dự phòng bằng Code (nếu đơn cũ chưa có ID)
               const fallbackProduct = products.find(p => p.code === item.productCode);
-
-              // 2. Tính toán giá trị thực tế sẽ gán vào Value của Select
-              // Ưu tiên item.productId -> nếu rỗng thì dùng ID của sản phẩm tìm thấy bằng Code -> nếu không thì rỗng
-              const currentValue = item.productId || fallbackProduct?.id || '';
-
-              // 3. Kiểm tra xem giá trị này có tồn tại trong danh sách Products dropdown không
-              const isMatchFound = products.some(p => String(p.id) === String(currentValue));
-
-              // console.log(`🔍 Debug Dòng ${index + 1}:`, {
-              //   "1. Item Data": {
-              //     productId: item.productId,
-              //     productCode: item.productCode,
-              //     productName: item.productName
-              //   },
-              //   "2. Logic Value": {
-              //     currentValue: currentValue,
-              //     "Fallback tìm thấy?": fallbackProduct ? "✅ Có" : "❌ Không",
-              //     "ID Fallback": fallbackProduct?.id
-              //   },
-              //   "3. Kiểm tra hiển thị": {
-              //     "Value có trong Products list?": isMatchFound ? "✅ CÓ (Sẽ hiện tên)" : "❌ KHÔNG (Sẽ bị trắng)",
-              //     "Tổng SP tải về": products.length
-              //   }
-              // });
-              // ------------------------------------------
-
+              const currentValue = item.productId || fallbackProduct?.id || '';         
               return (
                 <div key={index} className="bg-gray-800/30 rounded-xl p-3 sm:p-4">
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
                     <div className="sm:col-span-5 ">
                       <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Product</label>
                       {String(selectedCategoryId) === '18' ? (
-                        // Hien thi Input nhap ten
                         <input
                           type="text"
                           placeholder="Nhập tên sản phẩm..."
                           value={item.productName}
-                          disabled={readOnly}
+                          disabled={readOnly||!canEditDetails}
                           onChange={(e) => updateItem(index, 'productName', e.target.value)}
                           className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-yellow-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 text-sm"
                         />
                       ) : (
-                        readOnly ? (
-                          <div className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base">
+                        readOnly ?  (
+                          <div 
+                          className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base">
                             {item.productName}
                           </div>
                         ) : (
                           <select
-                            // Sử dụng giá trị currentValue đã tính toán ở trên
                             value={currentValue}
                             disabled={!canEditDetails}
                             onChange={(e) => updateItem(index, 'productId', e.target.value)}
@@ -725,7 +673,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                           >
                             <option value="">Select a product</option>
                             {products.map(product => (
-                              // Sử dụng ID làm Key và Value để đảm bảo duy nhất
                               <option key={product.id} value={product.id}>
                                 [{product.code}] - {product.name} {product.color ? `(${product.color})` : ''}
                               </option>
@@ -733,18 +680,22 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                             )}
                           </select>
                         ))}
-
                     </div>
-
-                    {/* Các phần Quantity, Price, Delete giữ nguyên */}
-
+                    {/* Các phần Quantity, Price, Delete */}
                     <div className="sm:col-span-2">
                       <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Quantity</label>
                       <input
-                        type="number"
-                        min="1"
                         value={item.quantity}
-                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value)||1 )}
+                        disabled={!canEditDetails}
+                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">QuantityOld</label>
+                      <input
+                        value={item.quantityOld}
+                        onChange={(e) => updateItem(index, 'quantityOld', parseInt(e.target.value)||1 )}
                         disabled={!canEditDetails}
                         className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
                       />
@@ -752,7 +703,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                     <div className="sm:col-span-2">
                       <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Price</label>
                       <input
-                        type="number"
                         value={item.price}
                         disabled={String(selectedCategoryId) !== '18'||!canEditDetails}
                         onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
@@ -769,9 +719,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
                       />
                     </div>
-                 
+                    {!readOnly && (
                     <div className="flex justify-center sm:col-span-1">
-
                       <button
                         type="button"
                         onClick={() => removeItem(index)}
@@ -779,8 +728,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
-
                     </div>
+                    )}
                   </div>
                 </div>
               );
@@ -795,21 +744,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                 <span>Subtotal:</span>
                 <span>{formData.subtotal.toFixed(2)} VNĐ</span>
               </div>
-              {/* <div className="flex justify-between text-gray-300 text-sm sm:text-base">
-                <span>Tax (8%):</span>
-                <span>${formData.tax.toFixed(2)}</span>
-              </div> */}
-              {/* <div className="flex justify-between items-center text-gray-300 text-sm sm:text-base">
-                <span>Shipping:</span>
-                <input
-                  type="number"
-                  name="shipping"
-                  step="100"
-                  value={formData.shipping ?? 0}
-                  onChange={handleChange}
-                  className="w-20 sm:w-24 px-2 py-1 bg-gray-800/50 border border-gray-700 rounded text-white text-right focus:outline-none focus:ring-1 focus:ring-blue-500/50 text-sm"
-                />
-              </div> */}
+      
               <hr className="border-gray-700" />
               <div className="flex justify-between text-white font-semibold text-base sm:text-lg">
                 <span>Total:</span>
@@ -870,8 +805,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
               onChange={handleChange}
               rows={3}
               className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none text-sm sm:text-base"
-              disabled={canEditQuantityOnly}
-
               placeholder="Enter any special instructions or notes"
             />
           </div>

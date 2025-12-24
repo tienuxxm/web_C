@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
@@ -15,7 +16,11 @@ class User extends Authenticatable implements JWTSubject
     public $timestamps = false;
 
     protected $fillable = [
-        'name', 'email', 'password', 'code', 'departments'
+        'name',
+        'email',
+        'password',
+        'code',
+        'departments'
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -23,8 +28,14 @@ class User extends Authenticatable implements JWTSubject
     protected $casts = ['email_verified_at' => 'datetime'];
 
     // --- JWT ---
-    public function getJWTIdentifier() { return $this->getKey(); }
-    public function getJWTCustomClaims() { return []; }
+    public function getJWTIdentifier()
+    {
+        return $this->getKey();
+    }
+    public function getJWTCustomClaims()
+    {
+        return [];
+    }
 
 
     public function roles()
@@ -64,8 +75,10 @@ class User extends Authenticatable implements JWTSubject
         foreach ($this->roles as $role) {
             // So sánh tên (NormalizedName hoặc Name)
             // NormalizedName thường viết hoa (SALES), ta so sánh an toàn
-            if (strtoupper($role->Name) === strtoupper($roleName) || 
-                strtoupper($role->NormalizedName) === strtoupper($roleName)) {
+            if (
+                strtoupper($role->Name) === strtoupper($roleName) ||
+                strtoupper($role->NormalizedName) === strtoupper($roleName)
+            ) {
                 return true;
             }
         }
@@ -99,31 +112,41 @@ class User extends Authenticatable implements JWTSubject
     }
     // Trong file app/Models/User.php
 
-// 1. Khai báo quan hệ với Category (Ngành hàng) như bạn đã gửi
-public function allowedIndustries()
-{
-    return $this->belongsToMany(
-        Category::class,                // Model đích
-        'dbo.API$rpt_Industry_Allow',   // Bảng trung gian
-        'UserCode',                     // Khóa ngoại của User (trong bảng trung gian)
-        'Industry',                     // Khóa ngoại của Category (trong bảng trung gian)
-        'code',                         // Khóa chính của User (là cột 'code')
-        'Code'                          // Khóa chính của Category
-    )
-    ->withPivot('Status')
-    ->wherePivot('Status', 1); // Giả sử Status = 1 là đang Active (được cấp quyền)
-}
+    // 1. Khai báo quan hệ với Category (Ngành hàng) như bạn đã gửi
+    public function allowedIndustries()
+    {
+        return $this->belongsToMany(
+            Category::class,                // Model đích
+            'dbo.API$rpt_Industry_Allow',   // Bảng trung gian
+            'UserCode',                     // Khóa ngoại của User (trong bảng trung gian)
+            'Industry',                     // Khóa ngoại của Category (trong bảng trung gian)
+            'code',                         // Khóa chính của User (là cột 'code')
+            'Code'                          // Khóa chính của Category
+        )
+            ->withPivot('Status')
+            ->wherePivot('Status', 1); // Giả sử Status = 1 là đang Active (được cấp quyền)
+    }
 
-/**
- * Helper function: Kiểm tra User có quyền với ngành hàng này không?
- * Dùng cho Policy
- */
-public function canAccessIndustry($industryCode)
-{
-    // Lấy danh sách Code ngành hàng user được phép
-    // Cache lại 60s hoặc dùng request cache để không query database liên tục nếu check nhiều
-    $allowedCodes = $this->allowedIndustries()->pluck('Code')->toArray();
+    /**
+     * Helper function: Kiểm tra User có quyền với ngành hàng này không?
+     * Dùng cho Policy
+     */
+    public function canAccessIndustry($industryCode)
+    {
+        // Lấy danh sách Code ngành hàng user được phép
+        // Cache lại 60s hoặc dùng request cache để không query database liên tục nếu check nhiều
+        $allowedCodes = $this->allowedIndustries()->pluck('Code')->toArray();
+
+        return in_array($industryCode, $allowedCodes);
+    }
+    public function orders(): HasMany
+    {
+
+        return $this->hasMany(Order::class, 'CreatedBy', 'code');
+    }
+    public function mergeOrders()
+    {
     
-    return in_array($industryCode, $allowedCodes);
-}
+        return $this->hasMany(MergeOrder::class, 'CreatedBy', 'code');
+    }
 }

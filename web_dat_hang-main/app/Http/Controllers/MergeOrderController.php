@@ -14,10 +14,7 @@ class MergeOrderController extends Controller
     public function show($id)
     {
         try {
-            // 1. Eager load:
-            // - items: Chi tiết đơn gộp (để tính tiền)
-            // - statusInfo: Tên trạng thái
-            // - originalOrderItems.order: Để lấy Supplier từ đơn gốc
+            // Load các quan hệ cần thiết
             $order = MergeOrder::with([
                 'items', 
                 'statusInfo', 
@@ -26,65 +23,75 @@ class MergeOrderController extends Controller
             ->where('DocumentNo', $id)
             ->firstOrFail();
 
-            // 2. Tính tổng tiền (dựa trên các dòng của đơn gộp)
+            // Tính tổng tiền
             $subtotal = $order->items->sum(function ($item) {
                 return $item->Quantity * $item->Price;
             });
 
-            // 3. Logic lấy Nhà Cung Cấp & Mục Đích
-            // Mặc định
-            $supplierName = 'N/A'; // Hoặc 'Nhiều nguồn'
+            // Logic lấy thông tin gốc (như cũ)
+            $supplierName = 'N/A';
             $intendedUse  = 'Gộp đơn';
-
-            // Lấy dòng đơn gốc đầu tiên thuộc về đơn gộp này
             $firstOriginalItem = $order->originalOrderItems->first();
 
-            // Nếu tìm thấy đơn gốc -> Lấy thông tin Header của nó
             if ($firstOriginalItem && $firstOriginalItem->order) {
                 $originalHeader = $firstOriginalItem->order;
-                
                 $supplierName = $originalHeader->Supplier ?? 'N/A';
                 $intendedUse  = $originalHeader->IntendedUse ?? 'Gộp đơn';
             }
 
-            // 4. Format dữ liệu trả về
+            // Format dữ liệu trả về chuẩn theo Schema mới
             $formattedOrder = [
                 'id'                 => $order->DocumentNo,
                 'order_number'       => $order->DocumentNo,
-                
-                // Dữ liệu lấy từ logic ở bước 3
                 'supplier_name'      => $supplierName, 
                 'intended_use'       => $intendedUse,
-                
                 'status'             => (int)$order->Status,
-                'status_name'        => $order->statusInfo->Name ?? 'Không xác định',
+                'status_name'        => $order->statusInfo->Name ?? '',
                 'order_date'         => $order->PostingDate,
                 'estimated_delivery' => $order->ShipmentDate,
-                'notes'              => $order->Note,
                 'subtotal'           => $subtotal,
                 'total_amount'       => $subtotal,
                 'industry_id'        => $order->Industry,
-                'created_by'         => $order->CreatedBy,
+                
+                // --- THÔNG TIN TRACKING (HEADER) ---
+                'created_by'            => $order->CreatedBy,
+                'created_date'          => $order->CreatedDate,
+                
+                // Note: Thường là Sales hoặc Ghi chú chung
+                'note'                  => $order->Note,           
+                
+                // ModifiedBy: Cung ứng hoặc Người sửa cuối cùng
+                'modified_by'           => $order->ModifiedBy,     
+                'modified_date'         => $order->ModifiedDate,   
 
-                // ITEMS (Chi tiết đơn gộp)
+                // Manager: Thông tin của Sếp/Leader
+                'note_manager'          => $order->NoteManager,
+                'modified_manager_by'   => $order->ModifiedManagerBy,
+                'modified_manager_date' => $order->ModifiedManagerDate,
+
+                // ITEMS (CHI TIẾT)
                 'items' => $order->items->map(function ($item) {
                     return [
-                        'id'           => $item->ID, // ID dòng merge
-                        'product_code' => $item->ItemCode,
-                        'product_name' => $item->ItemName,
-                        'quantity'     => (float)$item->Quantity,
-                        'unit_price'   => (float)$item->Price,
-                        'unit'         => $item->Unit,
-                        'total'        => (float)($item->Quantity * $item->Price),
-
-                        // Thông tin product để hiển thị trong Modal
+                        'id'               => $item->ID,
+                        'purchase_line_id' => $item->PurchaseLineID, // Link về line gốc
+                        'product_code'     => $item->ItemCode,
+                        'product_name'     => $item->ItemName,
+                        'quantity'         => (float)$item->Quantity,
+                        'unit_price'       => (float)$item->Price,
+                        'unit'             => $item->Unit,
+                        'total'            => (float)($item->Quantity * $item->Price),
                         'product' => [
                             'id'    => $item->ItemCode,
                             'code'  => $item->ItemCode,
                             'name'  => $item->ItemName,
                             'price' => (float)$item->Price,
                             'color' => $item->Variant,
-                        ]
+                        ],
+                        // Tracking dòng
+                        'line_modified_by'           => $item->ModifiedBy,
+                        'line_modified_date'         => $item->ModifiedDate,
+                        'line_modified_manager_by'   => $item->ModifiedManagerBy,
+                        'line_modified_manager_date' => $item->ModifiedManagerDate,
                     ];
                 }),
             ];
@@ -99,152 +106,280 @@ class MergeOrderController extends Controller
     public function update(Request $request, $id)
     {
         $user = JWTAuth::user();
-
-        // 1. Tìm đơn hàng gộp
         $order = MergeOrder::where('DocumentNo', $id)->firstOrFail();
 
         $currentStatus = (int)$order->Status;
         $newStatus     = (int)$request->input('status');
+
         if ($newStatus === $currentStatus) {
-            return response()->json([
-                'message' => 'Bạn chưa cập nhật trạng thái đơn hàng.'
-            ], 422);
-        }
-        $canChange = false;
-        // --- QUYỀN: ADMIN (Quyền lực nhất) ---
-        if ($user->isRole('Administrator')) {
-            $canChange = true;
-        }
-        // --- PHÂN QUYỀN: NHÓM CUNG ỨNG / ADMIN / HÀNH CHÍNH ---
-        if ($user->isRole('Supply')) {
-
-            // Flow 1: Từ Nháp (8) -> Gửi duyệt (2) hoặc Hủy (5)
-            // (Đoạn này thay thế cho logic cũ của bạn)
-            if ($currentStatus == 8) { // OrderStatus::TYPE_DA_DUYET
-                if ($newStatus == 2) {
-                    $canChange = true;
-                }
-            }
-
-            // Flow 2: Từ Đã duyệt (3) -> Đang đặt hàng (4)
-            elseif ($currentStatus == 3) { // OrderStatus::TYPE_DA_DUYET
-                if ($newStatus == 4) {
-                    $canChange = true;
-                }
-            }
-
-            // Flow 3: Từ Đang đặt hàng (4) -> Hoàn thành (11)
-            elseif ($currentStatus == 4) { // OrderStatus::TYPE_DANG_DAT_HANG
-                if ($newStatus == 11) {
-                    $canChange = true;
-                }
-            }
+            return response()->json(['message' => 'Bạn chưa cập nhật trạng thái đơn hàng.'], 422);
         }
 
-        // --- PHÂN QUYỀN: NHÓM LÃNH ĐẠO (LEADER / GIÁM ĐỐC) ---
-        // (Giữ logic này để Sếp có thể duyệt đơn từ 2 -> 3)
-        elseif ($user->isRole('Leader') || $user->isRole('Manage')) {
-            if ($currentStatus == 2) { // Đang chờ duyệt
-                if (in_array($newStatus, [3, 5])) { // Duyệt (3) hoặc Từ chối (5)
-                    $canChange = true;
-                }
-            }
-        }
-
-        // Kiểm tra kết quả phân quyền
-        if (!$canChange) {
-            return response()->json([
+        // 1. GỌI POLICY
+        // (Nhớ đã khai báo protected $policies trong AuthServiceProvider)
+        if ($user->cannot('updateStatus', [$order, $newStatus])) {
+             return response()->json([
                 'message' => "Bạn không có quyền chuyển từ trạng thái [$currentStatus] sang [$newStatus]."
             ], 403);
         }
 
-        // 2. Cập nhật Header
-        $order->update([
-            'Status' => $newStatus,
-            'Note'   => $request->notes ?? $order->Note
-        ]);
+        // 2. CHUẨN BỊ DỮ LIỆU (Mapping cột theo DB mới)
+        $now = now();
+        $userCode = $user->code;
+        
+        $headerUpdateData = ['Status' => $newStatus];
+        $lineUpdateData   = ['Status' => $newStatus];
 
-        // 3. (QUAN TRỌNG) Cập nhật Status cho các dòng chi tiết (Merge Line)
-        // Để đảm bảo dữ liệu đồng bộ, khi Header đổi trạng thái thì Line cũng phải đổi theo
-        \App\Models\MergeOrderItem::where('DocumentNo', $id)->update([
-            'Status' => $newStatus
-        ]);
+        // --- A. NHÓM LÃNH ĐẠO (LEADER / MANAGER) ---
+        if ($user->isRole('Leader') || $user->isRole('Manage')) {
+            // Header
+            $headerUpdateData['ModifiedManagerBy']   = $userCode;
+            $headerUpdateData['ModifiedManagerDate'] = $now;
+            // Leader ghi chú vào cột NoteManager
+            if ($request->has('notes')) {
+                $headerUpdateData['NoteManager'] = $request->notes;
+            }
 
-        return $this->show($id); // Trả về dữ liệu mới nhất
+            // Line
+            $lineUpdateData['ModifiedManagerBy']   = $userCode;
+            $lineUpdateData['ModifiedManagerDate'] = $now;
+        }
+        
+        // --- B. CUNG ỨNG (SUPPLY) HOẶC SALES HOẶC ADMIN ---
+        // (Theo DB này, Cung ứng dùng cột ModifiedBy chung với Sales)
+        else {
+            // Header
+            $headerUpdateData['ModifiedBy']   = $userCode;
+            $headerUpdateData['ModifiedDate'] = $now;
+            
+            // Nếu có ghi chú, Cung ứng/Sales sẽ ghi vào cột Note chung
+            if ($request->has('notes')) {
+                $headerUpdateData['Note'] = $request->notes;
+            }
+
+            // Line
+            $lineUpdateData['ModifiedBy']   = $userCode;
+            $lineUpdateData['ModifiedDate'] = $now;
+        }
+
+        // 3. THỰC HIỆN UPDATE
+        DB::connection('sqlsrv')->beginTransaction();
+        try {
+            // Update Header
+            $order->update($headerUpdateData);
+
+            // Update Lines
+            MergeOrderItem::where('DocumentNo', $id)->update($lineUpdateData);
+
+            DB::connection('sqlsrv')->commit();
+            
+            return $this->show($id);
+
+        } catch (\Exception $e) {
+            DB::connection('sqlsrv')->rollBack();
+            return response()->json(['message' => 'Lỗi cập nhật: ' . $e->getMessage()], 500);
+        }
     }
 
-    // Helper fake tên trạng thái (hoặc bạn có thể join bảng Status nếu muốn chuẩn)
 
-    // GET /api/merge-orders
+    public function stats(Request $request)
+    {
+        $user = JWTAuth::user();
+        $group = $request->get('group', 'merged');
+        
+        // 1. LẤY TÊN BẢNG ĐỘNG TỪ MODEL (Best Practice)
+        $headerModel = new MergeOrder();
+        $lineModel   = new MergeOrderItem(); // 👈 Khởi tạo model Line để lấy tên bảng
+        
+        // Lấy tên thô: "API$Merge Header" và "API$Merge Line"
+        $rawHeaderTbl = $headerModel->getTable(); 
+        $rawLineTbl   = $lineModel->getTable();   
+        
+        // 🛠️ XỬ LÝ SQL SERVER: Bao ngoặc vuông [] vì tên bảng có dấu cách
+        $tblHeader = '[' . $rawHeaderTbl . ']'; // "[API$Merge Header]"
+        $tblLine   = '[' . $rawLineTbl . ']';   // "[API$Merge Line]"
+
+        $query = MergeOrder::query();
+
+        // ---------------------------------------------------------
+        // A. PHẠM VI DỮ LIỆU (SCOPE)
+        // ---------------------------------------------------------
+        if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
+            $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
+            // Ở đây dùng tên cột 'Industry' bình thường vì Eloquent tự xử lý
+            $query->whereIn('Industry', $allowedIndustries);
+        }
+
+        // ---------------------------------------------------------
+        // B. CẤU HÌNH TRẠNG THÁI
+        // ---------------------------------------------------------
+        $pending = [];
+        $processing = [];
+        $total = []; 
+
+        // TAB MERGED (Đang xử lý)
+        if ($group === 'merged' || $group === 'merged_process') {
+            if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')||$user->isRole('Supply')) {
+                $pending = [8];      // Mới gộp
+                $processing = [3];   // Đã duyệt
+                $total = [8, 3];     
+            } 
+            elseif ($user->isRole('Leader')) {
+                $pending = [2];      // Chờ duyệt
+                $processing = [3];   // Đã duyệt
+                $total = [2, 3];
+            } else {
+                $total = [8, 2, 3]; // Fallback
+            }
+        }
+        // TAB COMPLETED (Hoàn thành)
+        elseif ($group === 'merged_completed' || $group === 'completed') {
+            $pending = [4];         
+            $processing = [11];     
+            $total = [4, 11];
+        }
+
+        if (empty($total)) {
+            return response()->json(['total_orders' => 0, 'pending_orders' => 0, 'processing_orders' => 0, 'total_revenue' => 0]);
+        }
+
+        // ---------------------------------------------------------
+        // C. ĐẾM SỐ LƯỢNG (Dùng biến $tblHeader)
+        // ---------------------------------------------------------
+        // Sử dụng $tblHeader để tránh lỗi cú pháp SQL Server
+        $stats = $query->selectRaw("
+            SUM(CASE WHEN $tblHeader.[Status] IN (" . implode(',', $total) . ") THEN 1 ELSE 0 END) as total,
+            SUM(CASE WHEN $tblHeader.[Status] IN (" . implode(',', $pending) . ") THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN $tblHeader.[Status] IN (" . implode(',', $processing) . ") THEN 1 ELSE 0 END) as processing
+        ")->first();
+
+        // ---------------------------------------------------------
+        // D. TÍNH DOANH THU (JOIN ĐỘNG)
+        // ---------------------------------------------------------
+        $revenue = 0;
+        
+        if ($stats->total > 0) {
+            $revenueQuery = clone $query;
+            
+            // 1. Join dùng biến $tblLine (lấy từ Model MergeOrderItem)
+            // Cú pháp: JOIN [API$Merge Line] as lines ON lines.DocumentNo = [API$Merge Header].DocumentNo
+            $revenueQuery->join(
+                DB::raw("$tblLine as lines"), 
+                'lines.DocumentNo', 
+                '=', 
+                DB::raw("$tblHeader.[DocumentNo]") // Bọc DB::raw để Laravel không tự thêm ngoặc sai
+            );
+
+            // 2. Filter Status (Chỉ rõ bảng Header)
+            $revenueQuery->whereIn(DB::raw("$tblHeader.[Status]"), $total);
+
+            // 3. Tính tổng từ bảng Line
+            $revenue = $revenueQuery->sum(DB::raw('lines.Quantity * lines.Price'));
+        }
+
+        return response()->json([
+            'total_orders'      => (int) ($stats->total ?? 0),
+            'pending_orders'    => (int) ($stats->pending ?? 0),
+            'processing_orders' => (int) ($stats->processing ?? 0),
+            'total_revenue'     => (float) $revenue
+        ]);
+    }
+
     public function index(Request $request)
     {
         try {
             $user = JWTAuth::user();
-            // 1. Query
-            $query = MergeOrder::with(['items', 'statusInfo'])->orderBy('CreatedDate', 'desc');
+            $query = MergeOrder::with(['items', 'statusInfo', 'originalOrderItems.order'])
+                ->orderBy('CreatedDate', 'desc');
 
-            // --- 👇 LOGIC LỌC MỚI DỰA TRÊN 'GROUP' (filterType) ---
-        $group = $request->get('group');
+            if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
+                $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
+                $query->whereIn('Industry', $allowedIndustries);
+            }
+            // 2. LEADER: Thấy toàn bộ (Không filter Industry)
+            elseif ($user->isRole('Leader')) {
+                // No scope filter
+            }
 
-        // 1. Nhóm 'merged_process': Quy trình duyệt (Leader/Cung ứng)
-        if ($group === 'merged_process') {
-            // Status: Merge/Nháp (8), Đã duyệt (3), Hủy (5)
-            $query->whereIn('Status', [8, 3, 5,2]); 
-        }
-        
-        // 2. Nhóm 'merged_completed': Theo dõi & Hoàn tất
-        elseif ($group === 'merged_completed') {
-            // Status: Đã duyệt (3), Đang đặt (4), Hoàn thành (11)
-            $query->whereIn('Status', [ 4, 11]);
-        }
-            // (Có thể thêm logic lọc theo User/Phòng ban nếu cần)
+            $group = $request->get('group', 'merged'); // Mặc định là 'merged'
 
-            // 2. Phân trang
+            // --- TRƯỜNG HỢP 1: TAB MERGED ORDERS (Đơn gộp) ---
+            if ($group === 'merged' || $group === 'merged_process') {
+                
+                // Logic cho SUPPLY / HÀNH CHÍNH
+                if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
+                    // Hiển thị: 8 (Mới gộp), 3 (Đã duyệt), 5 (Hủy - xem lịch sử)
+                    $query->whereIn('Status', [8, 3,2, 5]);
+                }
+                
+                // Logic cho LEADER
+                elseif ($user->isRole('Leader')) {
+                    // Hiển thị: 2 (Chờ duyệt), 3 (Đã duyệt), 5 (Hủy - xem lịch sử)
+                    $query->whereIn('Status', [2, 3, 5]);
+                }
+                
+                // Fallback (cho Admin hoặc role khác nếu có): Thấy hết các trạng thái đang chạy
+                else {
+                    $query->whereIn('Status', [8, 2, 3, 5]); 
+                }
+            }
+
+            // --- TRƯỜNG HỢP 2: TAB COMPLETED (Đơn hoàn thành) ---
+            elseif ($group === 'completed' || $group === 'merged_completed') {
+                // Cả Supply và Leader đều thấy giống nhau ở đây
+                // Hiển thị: 4 (Đang đặt hàng), 11 (Hoàn thành)
+                $query->whereIn('Status', [4, 11]);
+            }
+
+            // ---------------------------------------------------------
+            // C. TÌM KIẾM
+            // ---------------------------------------------------------
+            if ($request->has('q') && !empty($request->q)) {
+                $search = $request->q;
+                $query->where('DocumentNo', 'like', "%{$search}%");
+            }
+
+            // ---------------------------------------------------------
+            // D. PHÂN TRANG & FORMAT DỮ LIỆU
+            // ---------------------------------------------------------
             $limit = $request->get('limit', 10);
             $orders = $query->paginate($limit);
 
-            // 3. Format dữ liệu cho khớp với OrdersPage
             $data = $orders->getCollection()->map(function ($order) {
                 // Tính tổng tiền
-                $totalAmount = $order->items->sum(function ($item) {
-                    return $item->Quantity * $item->Price;
-                });
+                $totalAmount = $order->items->sum(fn($item) => $item->Quantity * $item->Price);
 
-                $firstOriginalItem = $order->originalOrderItems->load('order')->first();
-
-    // 2. Lấy thông tin Supplier và IntendedUse từ Header của đơn gốc
-                $supplierName = 'N/A';
-                $intendedUse = 'Gộp đơn';
-
-                if ($firstOriginalItem && $firstOriginalItem->order) {
-                    $supplierName = $firstOriginalItem->order->Supplier ?? 'N/A';
-                    $intendedUse  = $firstOriginalItem->order->IntendedUse ?? 'Gộp đơn';
-                }
+                // Lấy item gốc đầu tiên để trích xuất thông tin chung
+                $firstOriginalItem = $order->originalOrderItems->first();
+                
+                // Dùng toán tử null-safe (?->) để tránh lỗi nếu đơn gốc bị xóa hoặc null
+                $supplierName = $firstOriginalItem?->order?->Supplier ?? 'N/A';
+                $intendedUse  = $firstOriginalItem?->order?->IntendedUse ?? 'Gộp đơn';
 
                 return [
-                    'id' => $order->DocumentNo,
-                    'order_number' => $order->DocumentNo,
-                    'supplier_name' => $supplierName, // Hoặc logic lấy tên NCC
-                    'intended_use' => $intendedUse,
+                    'id'            => $order->DocumentNo,
+                    'order_number'  => $order->DocumentNo,
+                    'supplier_name' => $supplierName, 
+                    'intended_use'  => $intendedUse,
                     'customer_name' => $order->CreatedBy,
-                    'created_at' => $order->CreatedDate,
-                    'order_date' => $order->PostingDate, // Để hiển thị cột Date
-                    'status' => (int)$order->Status,
-                    'status_name' => $order->statusInfo->Name, // Hàm helper cũ
-                    'total' => number_format($totalAmount, 0, ',', '.'), // Format tiền
-                    'items_count' => $order->items->count(),
-                    'items' => $order->items->map(function ($it) { // Map items sơ lược cho tooltip
+                    'created_at'    => $order->CreatedDate,
+                    'order_date'    => $order->PostingDate,
+                    'status'        => (int)$order->Status,
+                    'status_name'   => $order->statusInfo?->Name ?? 'Unknown',
+                    'total'         => $totalAmount, 
+                    'items_count'   => $order->items->count(),
+                    'items'         => $order->items->map(function ($it) {
                         return [
-                            'id' => $it->ID, // 👈 THÊM DÒNG NÀY
-                            'productName' => $it->ItemName,
+                            'id'           => $it->ID,
+                            'productName'  => $it->ItemName,
                             'product_code' => $it->ItemCode,
-                            'quantity' => (float)$it->Quantity,
-
-                            // Map thêm cấu trúc này để OrderModal không bị lỗi
-                            'product' => [
-                                'id' => $it->ItemCode,
-                                'code' => $it->ItemCode,
-                                'name' => $it->ItemName,
+                            'quantity'     => (float)$it->Quantity,
+                            'price'        => (float)$it->Price,
+                            // Object product hỗ trợ modal xem chi tiết
+                            'product'      => [
+                                'id'    => $it->ItemCode,
+                                'code'  => $it->ItemCode,
+                                'name'  => $it->ItemName,
                                 'price' => (float)$it->Price,
                             ]
                         ];
@@ -254,6 +389,7 @@ class MergeOrderController extends Controller
 
             $orders->setCollection($data);
             return response()->json($orders);
+
         } catch (\Exception $e) {
             return response()->json(['message' => 'Lỗi tải danh sách', 'error' => $e->getMessage()], 500);
         }

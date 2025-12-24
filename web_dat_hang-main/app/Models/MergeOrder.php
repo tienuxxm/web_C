@@ -14,7 +14,7 @@ class MergeOrder extends Model
 
     protected $fillable = [
         'DocumentNo', 'PostingDate', 'ShipmentDate', 'Industry', 
-        'Status', 'Note', 'CreatedBy', 'CreatedDate'
+        'Status', 'Note', 'CreatedBy', 'CreatedDate','ModifiedBy','ModifiedDate','NoteManager','ModifiedManagerBy','ModifiedManagerDate'
     ];
 
     public function items()
@@ -23,8 +23,7 @@ class MergeOrder extends Model
     }
     public function statusInfo()
     {
-        // Quan hệ 1-1 với bảng Status dựa trên cột 'Type'
-        // Lưu ý: Phải filter thêm cột 'Table' = 'Order Purchasing'
+       
         return $this->belongsTo(OrderStatus::class, 'Status', 'Type','Name');
     }
     public function getStatusNameAttribute()

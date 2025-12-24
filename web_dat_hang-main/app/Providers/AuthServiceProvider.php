@@ -3,31 +3,25 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Gate;
 use App\Models\Report;
 use App\Models\Order;
+use App\Models\MergeOrder;
 use App\Policies\OrderPolicy;
 use App\Policies\ReportPolicy;
+use App\Policies\MergeOrderPolicy;
 
 class AuthServiceProvider extends ServiceProvider
 {
-    /**
-     * Register services.
-     */
+
     public function register(): void
     {
-        //
+    
     }
-
-    /**
-     * Bootstrap services.
-     */
     protected $policies = [
             Order::class => OrderPolicy::class,
             Report::class => ReportPolicy::class,
-            // Thêm các model và policy khác tại đây nếu cần
+            MergeOrder::class => MergeOrderPolicy::class,
         ];
-
     public function boot(): void
     {
 

@@ -48,16 +48,10 @@ const ProductsPage: React.FC = () => {
   const user = storedUser ? JSON.parse(storedUser) : null;
 
   const role = user?.role;  // Ví dụ: 'nhan_vien' | 'truong_phong'
-// const department = user?.department?.name_department;
 
-  const isManager = ['truong_phong', 'pho_phong'].includes(role);
-  const isStaff    = ['nhan_vien_chinh_thuc', 'intern'].includes(role);
-  console.log('role =', role);          // 'truong_phong'?
-  console.log('isManager =', isManager); // true?
+  
 
-  /* --------------------------------
-    1) useEffect: Lấy danh sách SP
-  ----------------------------------*/
+
   useEffect(() => {
   const loadStats = async () => {
     try {
@@ -457,7 +451,6 @@ useEffect(() => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Product Management</h1>
-          <p className="text-gray-400">Manage your product inventory and catalog</p>
         </div>
         <div className="flex items-center gap-4 justify-end-4">
           {/* <button
@@ -616,14 +609,7 @@ useEffect(() => {
               
               // Sẽ "làm tối" nếu 1 trong 2 (Sản phẩm hoặc Danh mục) bị inactive
               const isVisuallyDisabled = !isProductActive ; 
-              console.log(`🔍 DEBUG SP [${product.sku}]:`, {
-                  Ten: product.name,
-                  Product_Status_GiaTri: product.status,      // Giá trị thực tế của sản phẩm
-                  Category_Status_GiaTri: product.category_status, // Giá trị thực tế của danh mục
-                  
-                  // Kiểm tra điều kiện Logic
-                  Check_Product_Active: isProductActive, 
-                  Check_Category_Active: isCategoryActive,});
+             
               
     return (
       <tr
