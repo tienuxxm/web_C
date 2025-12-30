@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Search, RotateCcw, Edit, Eye, Package, Clock, CheckCircle, XCircle, AlertCircle, GitMerge, Upload ,HandCoins} from 'lucide-react';
-import api from '../../services/api';
-
+import { 
+  Plus, Search, RotateCcw, Edit, Eye, Package, Clock, CheckCircle, 
+  XCircle, AlertCircle, GitMerge, Upload, HandCoins, 
+  FileSpreadsheet, Filter, 
+} from 'lucide-react';import api from '../../services/api';
+import { useTheme } from '../../context/ThemeContext';
 import { OrderPayload, OrderFromAPI } from './OrderModal';
 import OrderModal from './OrderModal'; 
-
 import { getCurrentUser } from '../../utils/auth';
 import { useLocation } from 'react-router-dom';
 import MySwal from '../../utils/swal';
 import { getStatConfig } from '../../utils/orderStatusMapping';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 
 interface OrderItem {
   productCode: string;
@@ -66,8 +69,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
   const [categories, setCategories] = useState<{ id: number, name: string }[]>([]);
-
-
+  const { theme } = useTheme();
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -495,10 +497,6 @@ const res = await api.post('/orders/import', formData, {
     }
   };
 
-  const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
-  const [selectedYears, setSelectedYears] = useState<string[]>([]);
-
-
   useEffect(() => {
     const user = getCurrentUser();
     setCurrentUser(user);
@@ -526,8 +524,6 @@ const res = await api.post('/orders/import', formData, {
     setMonthlyOrders([]);
     setYearlyOrders([]);
     setSelectedOrders([]);
-    setSelectedMonths([]);
-    setSelectedYears([]);
     loadStats();
 
     if (mode === 'normal' || mode === 'merged') {
@@ -539,63 +535,9 @@ const res = await api.post('/orders/import', formData, {
     }
   }, [mode, page, refreshKey, currentUser, search, filterType]);
 
-  const toggleMonthSelection = (month: string) => {
-    setSelectedMonths(prev =>
-      prev.includes(month)
-        ? prev.filter(m => m !== month)
-        : [...prev, month]
-    );
-  };
-
-  const toggleYearSelection = (year: string) => {
-    setSelectedYears(prev =>
-      prev.includes(year)
-        ? prev.filter(y => y !== year)
-        : [...prev, year]
-    );
-  };
-  const handleExportSelectedMonths = async () => {
-    try {
-      const response = await api.post(
-        '/export-merged-orders-multi-months',
-        { months: selectedMonths }, 
-        { responseType: 'blob' }
-      );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'don-gop-theo-thang.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.message || 'Xuất thất bại');
-    }
-  };
+ 
   const reloadList = () => {
     setRefreshKey(prev => prev + 1);
-  };
-
-  const handleExportSelectedYears = async () => {
-    try {
-      const response = await api.post(
-        '/export-merged-orders-multi-years',
-        { years: selectedYears },
-        { responseType: 'blob' }
-      );
-
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'don-gop-theo-nam.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.message || 'Xuất thất bại');
-    }
   };
 
   const role = currentUser?.role?.name_role;
@@ -666,272 +608,214 @@ const res = await api.post('/orders/import', formData, {
   const showMergeButton = mode === 'normal' && selectedOrders.length > 0;
   const showCheckbox = mode === 'normal';
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col space-y-6 animate-fade-in-up">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
-
-        <div>
-          <h1 className="text-xl sm:text-3xl font-bold text-white mb-2">Order Management</h1>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900/50 p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-glass-dark transition-all duration-300">        <div>
+          <h1 className="text-3xl font-bold text-bitex-primary dark:text-white">
+            Order Management
+          </h1>
         </div>
-        <div className='flex items-center gap-4 justify-end-4'>
-          <button
+        <div className='flex flex-wrap items-center gap-2 sm:gap-4 w-full md:w-auto'>
+            <button
             onClick={handleAddOrder}
             className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
           >
             <Plus className="h-5 w-5" />
-            <span className="hidden sm:inline">Create Order</span>
+            <span className="hidden sm:inline">Tạo đơn</span>
             <span className="sm:hidden">Create</span>
           </button>
           <button
             onClick={() => { reloadList(); setPage(1) }}
-            className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105"
+            className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
           >
-            <RotateCcw className="h-5 w-5" />
-            <span>Load Orders</span>
+            <RotateCcw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Tải đơn</span>
           </button>
         </div>
 
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-xs sm:text-sm">Total Orders</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">{stats.total.toLocaleString()}</p>
-            </div>
-            <Package className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {[
+          { label: 'Tổng đơn', val: stats.total, icon: Package, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+          { label: config.pending.label, val: stats.pending, icon: config.pending.icon, color:config.pending.color,bg:config.pending.bg },
+          { label: config.processing.label, val: stats.processing, icon: config.processing.icon, color:config.processing.color, bg: config.processing.bg },
+          { label: 'Thành Tiền', val: stats.revenue.toLocaleString(), icon: HandCoins, color: 'text-green-400', bg: 'bg-green-500/10', isCurrency: true }
+        ].map((stat, idx) => (
+          <div key={idx} className="glass-panel glass-panel-dark p-4 sm:p-6 rounded-2xl border border-white/10 relative overflow-hidden group">
+             <div className="flex justify-between items-start z-10 relative">
+                <div>
+                   <p className="text-blue-500 dark:text-gray-400 text-xs sm:text-sm font-medium uppercase tracking-wider">{stat.label}</p>
+                   <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                      {stat.val} {stat.isCurrency ? '₫' : ''}
+                   </h3>
+                </div>
+                <div className={`p-2 rounded-lg ${stat.bg}`}>
+                   <stat.icon className={`h-5 w-5 sm:h-6 sm:w-6 ${stat.color}`} />
+                </div>
+             </div>
           </div>
-        </div>
-
-        <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-xs sm:text-sm">{config.pending.label}</p>
-              <h3 className="text-white text-lg sm:text-2xl font-bold">{stats.pending}</h3>
-            </div>
-            <div className={`p-2 rounded-lg ${config.pending.color}`}>
-              <config.pending.icon  />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-xs sm:text-sm">{config.processing.label}</p>
-              <h3 className="text-white text-lg sm:text-2xl font-bold">{stats.processing}</h3>
-            </div>
-            <div className={`p-2 rounded-lg ${config.processing.color}`}>
-              <config.processing.icon />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-xs sm:text-sm">Total Revenue</p>
-              <p className="text-white text-lg sm:text-2xl font-bold">{stats.revenue.toLocaleString()} VNĐ</p>
-            </div>
-            <HandCoins className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Filters and Search */}
-      <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-3 sm:p-6">
+      {/* 3. Filters and Search (Giữ nguyên cấu trúc của bạn nhưng sửa màu sắc) */}
+      <div className={`rounded-2xl p-3 sm:p-6 border transition-all duration-300 ${
+         theme === 'light' ? 'bg-white shadow-sm border-gray-200' : 'glass-panel glass-panel-dark border-white/5'
+      }`}>
         <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:justify-between lg:space-y-0 lg:space-x-4">
+          
           {/* Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <div className="relative flex-1 md:flex-none group">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
             />
           </div>
+
           {showMergeButton && (
-            <div className='flex items-center space-x-4 mb-4 animate-fade-in-up'>
+            <div className='flex items-center space-x-4 mb-4 lg:mb-0 animate-fade-in-up'>
               <button
                 onClick={handleMergeOrders}
-                className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
+                className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base shadow-lg"
               >
                 <GitMerge className="h-5 w-5" />
                 <span className="hidden sm:inline">Gộp {selectedOrders.length} đơn đã chọn</span>
                 <span className="sm:hidden">Merge ({selectedOrders.length})</span>
               </button>
-              {/* <button
-              onClick={handleExportOrders}
-              className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
-            >
-              Export
-            </button> */}
             </div>
           )}
+
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             {/* 1. Select Ngành hàng */}
             <select
               value={importIndustryId}
               onChange={(e) => setImportIndustryId(e.target.value)}
-              className="px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white text-sm focus:ring-2 focus:ring-green-500 outline-none"
+              className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 outline-none transition-all"
             >
               <option value="">-- Chọn ngành nhập Excel --</option>
-              {/* Map danh sách categories của bạn */}
               {categories.map((cat: any) => (
                 <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
 
             {/* 2. Input File ẩn */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImportOrders}
-              accept=".csv,.txt,.xlsx"
-              className="hidden"
-            />
+            <input type="file" ref={fileInputRef} onChange={handleImportOrders} accept=".csv,.txt,.xlsx" className="hidden" />
 
-            {/* 3. Nút bấm kích hoạt */}
+            {/* 3. Nút Import */}
             <button
               onClick={() => {
-                if (!importIndustryId) {
-                  toast.error("Vui lòng chọn Ngành hàng trước!");
-                  return;
-                }
+                if (!importIndustryId) { toast.error("Vui lòng chọn Ngành hàng trước!"); return; }
                 fileInputRef.current?.click();
               }}
               className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-lg transition-all shadow-lg hover:shadow-green-500/30"
             >
               <Upload className="w-4 h-4" />
-              <span>Import Excel</span>
+              <span>Tạo nhiều đơn</span>
             </button>
-            <select
-              value={selectedStatus}
-              onChange={e => {
-                setSelectedStatus(e.target.value);
-                setPage(1);
-              }}
-              className="px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-            >
-              {/*  Option mặc định "All" thủ công */}
-              <option value="all">All Status</option>
 
-              {/*  Map dữ liệu từ API */}
-              {allStatuses.map(status => (
-                <option
-                  key={status.ID}
-                  value={status.Type} 
-                >
-                  {status.Name} 
-                </option>
-              ))}
-            </select>
-
-
+            {/* 4. Select Status */}
+            <div className="relative">
+               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+               <select
+                 value={selectedStatus}
+                 onChange={e => { setSelectedStatus(e.target.value); setPage(1); }}
+                 className="pl-9 pr-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base transition-all appearance-none cursor-pointer"
+               >
+                 <option value="all">Tất cả trạng thái</option>
+                 {allStatuses.map(status => (
+                   <option key={status.ID} value={status.Type}>{status.Name}</option>
+                 ))}
+               </select>
+            </div>
           </div>
         </div>
       </div>
-      {/* Orders Table */}
 
-      <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl overflow-hidden overflow-x-auto">
+      {/* 4. Orders Table (Sửa lại màu sắc cho Dark/Light) */}
+      <div className={`rounded-2xl overflow-hidden border transition-all duration-300 relative flex flex-col ${
+         theme === 'light' ? 'bg-white border-gray-200 shadow-sm' : 'glass-panel glass-panel-dark border-white/5'
+      }`}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
-
-            <thead className="bg-gray-800/50 border-b border-gray-700/50">
+            <thead className={`border-b ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-gray-800/50 border-gray-700/50'}`}>
               <tr>
-
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm w-12">
+                <th className="text-left p-2 sm:p-4 text-gray-500 dark:text-gray-300 font-medium text-xs sm:text-sm w-12">
                   {showCheckbox && eligibleOrders.length > 0 && (
                     <input
                       type="checkbox"
                       checked={isHeaderChecked}
                       onChange={handleSelectAll}
-                      className="flex items-center gap-2 form-checkbox text-blue-500 h-6 w-6 rounded bg-gray-700 border-gray-600 focus:ring-blue-500"
+                      className="flex items-center gap-2 form-checkbox text-blue-500 h-5 w-5 rounded bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500"
                     />
                   )}
-
-
                 </th>
-
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Order</th>
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Supplier</th>
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Items</th>
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Total</th>
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Status</th>
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Date</th>
-                <th className="text-left p-2 sm:p-4 text-gray-300 font-medium text-xs sm:text-sm">Actions</th>
+                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Mã đơn</th>
+                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Nhà cung cấp</th>
+                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Mặt hàng</th>
+                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Đơn giá</th>
+                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Trạng thái</th>
+                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Ngày tạo</th>
+                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Thao tác</th>
               </tr>
             </thead>
             <tbody>
               {filteredOrders.map((order) => {
                 return (
-                  <tr key={order.id} className="border-b border-gray-700/30 hover:bg-gray-800/30 transition-colors">
+                  <tr key={order.id} className="border-b border-blue-100 dark:border-gray-700/30 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                     <td className="p-2 sm:p-4">
                       {showCheckbox && Number(order.status) === 7 && (
                         <input
                           type="checkbox"
                           checked={selectedOrders.includes(order.id)}
                           onChange={() => toggleOrderSelection(order.id)}
-                          className="form-checkbox text-blue-500 h-6 w-6"
+                          className="form-checkbox text-blue-500 h-5 w-5 rounded bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
                         />
                       )}
-
                     </td>
                     <td className="p-2 sm:p-4">
                       <div className="flex items-center gap-2">
-
                         <div>
-                          <p className="text-white font-medium text-xs sm:text-sm">{order.orderNumber}</p>
+                          <p className="text-gray-900 dark:text-white font-medium text-xs sm:text-sm">{order.orderNumber}</p>
                         </div>
                       </div>
                     </td>
-
                     <td className="p-2 sm:p-4">
-                      <div>
-                        <p className="text-white text-xs sm:text-sm">{order.supplier_name}</p>
-                      </div>
+                      <p className="text-gray-900 dark:text-white text-xs sm:text-sm">{order.supplier_name}</p>
                     </td>
                     <td className="p-2 sm:p-4">
                       <div>
-                        <p className="text-white text-xs sm:text-sm">{order.items.length} item(s)</p>
-                        <p className="text-gray-400 text-xs">
+                        <p className="text-gray-900 dark:text-white text-xs sm:text-sm">{order.items.length} item(s)</p>
+                        <p className="text-gray-500 dark:text-gray-400 text-xs">
                           {order.items[0]?.productName}
                           {order.items.length > 1 && ` +${order.items.length - 1} more`}
                         </p>
                       </div>
                     </td>
-                    <td className="p-2 sm:p-4 text-white font-semibold text-xs sm:text-sm">{order.total} VNĐ</td>
+                    <td className="p-2 sm:p-4 text-gray-900 dark:text-white font-semibold text-xs sm:text-sm">{order.total.toLocaleString()} VNĐ</td>
                     <td className="p-2 sm:p-4">
                       <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium border w-fit ${getStatusColor(order.status)}`}>
                         {getStatusIcon(order.status)}
                         <span>{order.status_name.toUpperCase()}</span>
                       </div>
                     </td>
-                   
-                    <td className="p-2 sm:p-4 text-gray-300 text-xs sm:text-sm">{order.orderDate ? new Date(order.orderDate).toLocaleDateString('vi-VN') : ''}</td>
+                    <td className="p-2 sm:p-4 text-gray-600 dark:text-gray-300 text-xs sm:text-sm">{order.orderDate ? new Date(order.orderDate).toLocaleDateString('vi-VN') : ''}</td>
                     <td className="p-2 sm:p-4">
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => handleEditOrder(order)}
-                          className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors"
+                          className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors"
                         >
                           <Edit className="h-4 w-4" />
                         </button>
-                        {/* <button
-                          onClick={() => handleDeleteOrder(order)}
-                          className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button> */}
-
                         <button
-                          onClick={() => handleEditOrder(order, true)} // 👈 Xem chi tiết
-                          className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-500/10 rounded-lg transition-colors"
+                          onClick={() => handleEditOrder(order, true)} 
+                          className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-500/10 rounded-lg transition-colors"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
@@ -943,173 +827,37 @@ const res = await api.post('/orders/import', formData, {
             </tbody>
           </table>
         </div>
+        
         {filteredOrders.length === 0 && (
           <div className="text-center py-12">
             <Package className="h-8 w-8 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-400">No orders found matching your criteria</p>
+            <p className="text-blue-500 dark:text-gray-400">No orders found matching your criteria</p>
           </div>
         )}
+
+        {/* Pagination */}
         {lastPage > 1 && (
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 py-6">
+          <div className={`flex flex-col sm:flex-row justify-center items-center gap-4 py-6 border-t ${theme === 'light' ? 'border-gray-200' : 'border-gray-700/50'}`}>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1 rounded text-sm bg-gray-800/50 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1 rounded text-sm bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >Prev</button>
               {renderPagination()}
               <button
                 onClick={() => setPage(p => Math.min(lastPage, p + 1))}
                 disabled={page === lastPage}
-                className="px-3 py-1 rounded text-sm bg-gray-800/50 text-gray-300 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1 rounded text-sm bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >Next</button>
             </div>
           </div>
         )}
-
       </div>
 
-      {selectedMonths.length > 0 && (
-        <button
-          onClick={handleExportSelectedMonths}
-          className="mb-4 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
-        >
-          <span className="hidden sm:inline">Xuất {selectedMonths.length} tháng đã chọn</span>
-          <span className="sm:hidden">Export ({selectedMonths.length})</span>
-        </button>
-      )}
+      
 
-      {selectedYears.length > 0 && (
-        <button
-          onClick={handleExportSelectedYears}
-          className="mb-4 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
-        >
-          <span className="hidden sm:inline">Xuất {selectedYears.length} năm đã chọn</span>
-          <span className="sm:hidden">Export ({selectedYears.length})</span>
-        </button>
-      )}
-
-      {mode === 'monthly' && (
-        <div className="mt-6 space-y-6">
-          {monthlyOrders.map((group: any) => (
-            <div key={group.month} className="bg-gray-800/40 rounded-xl p-3 sm:p-4 border border-gray-600/30">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-white text-base sm:text-lg font-semibold">Tháng {group.month}</h2>
-                <input
-                  type="checkbox"
-                  checked={selectedMonths.includes(group.month)}
-                  onChange={() => toggleMonthSelection(group.month)}
-                  className="form-checkbox text-green-500 h-5 w-5"
-                />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[500px]">
-                  <thead>
-                    <tr>
-                      <th className="p-2 text-gray-300 text-xs sm:text-sm">Sản phẩm</th>
-                      <th className="p-2 text-gray-300 text-xs sm:text-sm">Tổng số lượng</th>
-                      <th className="p-2 text-gray-300 text-xs sm:text-sm">Giá</th>
-                      <th className="p-2 text-gray-300 text-xs sm:text-sm">Thành tiền</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.items.map((item: any) => (
-                      <tr key={item.product_id} className="border-t border-gray-700/40">
-                        <td className="p-2 text-white text-xs sm:text-sm">{item.product_name}</td>
-                        <td className="p-2 text-white text-xs sm:text-sm">{item.total_quantity}</td>
-                        <td className="p-2 text-white text-xs sm:text-sm">${item.price}</td>
-                        <td className="p-2 text-white text-xs sm:text-sm">${(item.price * item.total_quantity).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-
-        </div>
-      )}
-
-      {mode === 'yearly' && (
-        <div className="mt-6 space-y-6">
-          {yearlyOrders.map((group: any) => (
-            <div key={group.year} className="bg-gray-800/40 rounded-xl p-3 sm:p-6 border border-gray-600/30">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4">
-                  <h2 className="text-white text-lg sm:text-xl font-bold">Năm {group.year}</h2>
-                  <span className="text-green-400 font-semibold text-sm sm:text-base">
-                    Tổng doanh thu: ${group.total_revenue?.toLocaleString() || 0}
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={selectedYears.includes(group.year)}
-                  onChange={() => toggleYearSelection(group.year)}
-                  className="form-checkbox text-green-500 h-5 w-5"
-                />
-              </div>
-              {/* Yearly Summary */}
-              <div className="mb-6">
-                <h3 className="text-white text-base sm:text-lg font-semibold mb-3">Tổng kết năm</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left bg-gray-900/50 rounded-lg min-w-[600px]">
-                    <thead>
-                      <tr className="border-b border-gray-700/50">
-                        <th className="p-2 sm:p-3 text-gray-300 text-xs sm:text-sm">Mã SP</th>
-                        <th className="p-2 sm:p-3 text-gray-300 text-xs sm:text-sm">Tên sản phẩm</th>
-                        <th className="p-2 sm:p-3 text-gray-300 text-xs sm:text-sm">Tổng số lượng</th>
-                        <th className="p-2 sm:p-3 text-gray-300 text-xs sm:text-sm">Giá</th>
-                        <th className="p-2 sm:p-3 text-gray-300 text-xs sm:text-sm">Thành tiền</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.total_items?.map((item: any) => (
-                        <tr key={item.product_id} className="border-t border-gray-700/40">
-                          <td className="p-2 sm:p-3 text-white font-mono text-xs sm:text-sm">{item.product_code}</td>
-                          <td className="p-2 sm:p-3 text-white text-xs sm:text-sm">{item.product_name}</td>
-                          <td className="p-2 sm:p-3 text-white font-semibold text-xs sm:text-sm">{item.total_quantity}</td>
-                          <td className="p-2 sm:p-3 text-white text-xs sm:text-sm">${item.price}</td>
-                          <td className="p-2 sm:p-3 text-green-400 font-semibold text-xs sm:text-sm">
-                            ${(item.price * item.total_quantity).toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Monthly Breakdown */}
-              <div>
-                <h3 className="text-white text-base sm:text-lg font-semibold mb-3">Chi tiết theo tháng</h3>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {group.monthly_breakdown?.map((monthData: any) => (
-                    <div key={monthData.month} className="bg-gray-900/30 rounded-lg p-3 sm:p-4">
-                      <h4 className="text-blue-400 font-semibold mb-2 text-sm sm:text-base">
-                        {monthData.month_name} {group.year}
-                      </h4>
-                      <div className="space-y-2">
-                        {monthData.items?.slice(0, 3).map((item: any) => (
-                          <div key={item.product_id} className="flex justify-between text-xs sm:text-sm">
-                            <span className="text-gray-300 truncate flex-1 mr-2">{item.product_name}</span>
-                            <span className="text-white font-medium whitespace-nowrap">{item.total_quantity} units</span>
-                          </div>
-                        ))}
-                        {monthData.items?.length > 3 && (
-                          <div className="text-gray-400 text-xs">
-                            +{monthData.items.length - 3} sản phẩm khác
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
+      
       {/* Order Modal */}
       {showModal && (
         <OrderModal

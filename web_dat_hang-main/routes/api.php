@@ -12,18 +12,13 @@ use App\Http\Controllers\ExportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\MergeOrderController;
 
-/* ---------- PUBLIC ---------- */
 
 Route::post('register', [AuthController::class, 'register']);
 Route::get('roles',      [RoleController::class,     'role']);
 Route::get('departments', [DepartmentController::class, 'department']);
 Route::post('login',    [AuthController::class, 'login']);
-
-/* ---------- PROTECTED (JWT) ---------- */
 Route::middleware('auth:api')->group(function () {
-    /* Auth */
     Route::post('logout', [AuthController::class, 'logout']);
-    /* Reports */
     Route::apiResource('reports', ReportController::class); 
     /* Categories */
     Route::apiResource('categories', CategoryController::class)->only(['index', 'store']);
@@ -47,7 +42,6 @@ Route::middleware('auth:api')->group(function () {
         Route::get('merged-by-year', 'mergedByYear');   // Thêm route cho yearly
         Route::post('merge',         'merge');
         Route::get('stats', 'stats');
-        // Đưa trước
         Route::get('/',        'index');
         Route::post('/',       'store');
         Route::match(['put', 'patch'], '{order}', 'update');

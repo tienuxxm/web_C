@@ -42,11 +42,7 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $user = JWTAuth::user();
-
-        // Check quyền Tạo
         $this->authorize('create', Order::class);
-
-        // 1. Validate (Giữ nguyên như code cũ của bạn)
         $request->validate([
             'industry_id'   => 'required',
             'supplier_name' => 'required|string',
@@ -59,25 +55,19 @@ class OrderController extends Controller
             'items.*.quantity_old' => 'nullable|numeric|min:1',
             'items.*.productName' => 'required',
         ]);
-
         DB::connection('sqlsrv')->beginTransaction();
-
         try {
-            // 2. Sinh mã đơn hàng (PO + YYMM + Sequence)
             $prefix = 'PO' . date('ym');
             $lastOrder = Order::where('DocumentNo', 'like', $prefix . '%')
                 ->orderBy('DocumentNo', 'desc')
                 ->lockForUpdate()
                 ->first();
-
             $nextNum = 1;
             if ($lastOrder) {
                 $lastSeq = intval(substr($lastOrder->DocumentNo, -4));
                 $nextNum = $lastSeq + 1;
             }
             $newDocumentNo = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
-
-            // 3. Insert Bảng Header (API$Purchase Header)
             Order::create([
                 'DocumentNo'   => $newDocumentNo,
                 'PostingDate'  => $request->orderDate,
@@ -85,27 +75,20 @@ class OrderController extends Controller
                 'Industry'     => $request->industry_id,
                 'IntendedUse'  => $request->intended_use,
                 'Supplier'     => $request->supplier_name,
-                'Status'       => 1, // Mới
+                'Status'       => 1, 
                 'Note'         => $request->notes ?? '',
-
-                // Thông tin tạo
                 'CreatedBy'    => $user->code,
                 'CreatedDate'  => now(),
-
-                // 👇 THÊM: Thông tin sửa lần đầu (chính là người tạo)
-                'ModifiedBy'   => $user->code,
-                'ModifiedDate' => now(),
             ]);
-
             // 4. Insert Items
             foreach ($request->items as $index => $itemData) {
-                $quantity  = (float)$itemData['quantity'];
+                $inputQty = (float)$itemData['quantity'];
+                $quantity    = $inputQty; 
+                $quantityOld = $inputQty;
                 $cleanCode = $itemData['productCode'];
-
                 // Logic Variant
                 $isIndustry18 = ($request->industry_id == 18);
                 $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
-
                 // Logic lấy Product Name/Price
                 $prod = Product::where('code', $cleanCode)->first();
                 if ($prod) {
@@ -118,8 +101,7 @@ class OrderController extends Controller
                     $price    = isset($itemData['price']) ? (float)$itemData['price'] : 0;
                     $unit     = 'CAI';
                 }
-
-                // Insert Bảng 3: Line (Chi tiết)
+                // Insert : Line
                 OrderItem::create([
                     'DocumentNo'  => $newDocumentNo,
                     'Line'        => ($index + 1),
@@ -128,14 +110,12 @@ class OrderController extends Controller
                     'Variant'     => $variant,
                     'ItemName'    => $itemName,
                     'Unit'        => $unit,
-                    'Quantity'    => $quantity,
+                    'Quantity'    => $quantity,     // Số chốt tạm thời
+                    'QuantityOld' => $quantityOld,
                     'Price'       => $price,
                     'Status'      => 1,
                     'CreatedBy'   => $user->code,
                     'CreatedDate' => now(),
-                    // 👇 THÊM: Thông tin sửa lần đầu
-                    'ModifiedBy'   => $user->code,
-                    'ModifiedDate' => now(),
                 ]);
             }
 
@@ -148,7 +128,6 @@ class OrderController extends Controller
         }
     }
 
-    
     public function update(Request $request, $id)
     {
         $user = JWTAuth::user();
@@ -157,13 +136,11 @@ class OrderController extends Controller
         if (!$order) {
             return response()->json(['message' => 'Không tìm thấy đơn hàng'], 404);
         }
-
         // Check quyền cơ bản (Sở hữu / Admin)
         $this->authorize('update', $order);
 
         $currentStatus = (int)$order->Status;
         $inputStatus   = (int)$request->input('status');
-
         // 1. DÙNG POLICY CHECK QUYỀN CHUYỂN TRẠNG THÁI
         if ($inputStatus !== $currentStatus) {
             if ($user->cannot('updateStatus', [$order, $inputStatus])) {
@@ -178,7 +155,6 @@ class OrderController extends Controller
                 return response()->json(['message' => 'Trạng thái không đổi và bạn không có quyền lưu nháp.'], 422);
             }
         }
-
         // Validate Note bắt buộc khi Hủy/Điều chỉnh
         if (in_array($inputStatus, [10, 5]) && empty($request->notes)) {
             return response()->json(['message' => 'Bắt buộc nhập lý do vào ô Ghi chú.'], 422);
@@ -186,7 +162,6 @@ class OrderController extends Controller
         // 2. CHUẨN BỊ DỮ LIỆU & ĐIỀN CÁC CỘT MODIFIED
         $now = now();
         $userCode = $user->code;
-
         $updateData = [
             'PostingDate'  => $request->orderDate,
             'ShipmentDate' => $request->estimated_delivery,
@@ -217,12 +192,11 @@ class OrderController extends Controller
         try {
             // A. Update Header
             $order->update($updateData);
-            // B. Update Items (Chỉ làm nếu không phải là Hủy và có quyền sửa items)
+            // B. Update Items 
             if ($inputStatus !== 5) { // 5 = Hủy
                 if ($user->can('editItems', $order)) {
                     // Xóa cũ
                     OrderItem::where('DocumentNo', $id)->delete();
-
                     // Tạo mới
                     foreach ($request->items as $index => $itemData) {
                         $cleanCode = $itemData['productCode'];
@@ -231,7 +205,6 @@ class OrderController extends Controller
                         $isIndustry18 = ($order->Industry == 18);
                         $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
                         $prod = Product::where('code', $cleanCode)->first();
-                        // ... Logic lấy tên/giá như hàm store ...
                         if ($prod) {
                             $itemName = $prod->name;
                             $price    = $prod->price;
@@ -251,12 +224,9 @@ class OrderController extends Controller
                             'ItemName'    => $itemName,
                             'Unit'        => $unit,
                             'Quantity'    => $quantity,
+            
                             'Price'       => $price,
-                            'Status'      => $inputStatus,
-                            // Lưu người tạo dòng này (User đang login)
-                            'CreatedBy'   => $userCode,
-                            'CreatedDate' => $now,
-                            // 👇 Lưu người sửa dòng này
+                            'Status'      => $inputStatus,                        
                             'ModifiedBy'   => $userCode,
                             'ModifiedDate' => $now,
                         ]);
@@ -388,7 +358,7 @@ class OrderController extends Controller
         // 1. SCOPE
         if ($user->isRole('Sales')) {
             $query->where("$tbl.CreatedBy", $user->code);
-        } elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')||$user->isRole('Supply')) {
+        } elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam') || $user->isRole('Supply')) {
             $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
             $query->whereIn("$tbl.Industry", $allowedIndustries);
         }
@@ -402,7 +372,7 @@ class OrderController extends Controller
                 $pending = [1];      // Mới
                 $processing = [10];  // Điều chỉnh
                 $total = [1, 10];
-            } elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')||$user->isRole('Supply')) {
+            } elseif ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam') || $user->isRole('Supply')) {
                 $pending = [1];      // Mới (cần duyệt)
                 $processing = [7];   // Đã chốt (cần gộp)
                 $total = [1, 7];
@@ -473,7 +443,6 @@ class OrderController extends Controller
             $order = Order::with(['user', 'statusInfo', 'items.product'])
                 ->where('DocumentNo', $id)
                 ->firstOrFail();
-
             $subtotal = $order->items->sum(function ($item) {
                 return $item->Quantity * $item->Price;
             });
@@ -496,7 +465,7 @@ class OrderController extends Controller
                     $catId = $item->product ? $item->product->category_id : null;
                     if (!$catId) $catId = $order->Industry;
                     return [
-                        'id' => $item->ID, 
+                        'id' => $item->ID,
                         'product_code' => $item->ItemCode,
                         'product_name' => $item->ItemName,
                         'quantity' => (float)$item->Quantity,
@@ -505,20 +474,17 @@ class OrderController extends Controller
                         'unit' => $item->Unit,
                         'total' => (float)($item->Quantity * $item->Price),
                         'product' => [
-                            'id'    => $uniqueProductId, 
+                            'id'    => $uniqueProductId,
                             'code' => $item->ItemCode,
                             'name' => $item->ItemName,
                             'price' => (float)$item->Price,
                             'unit' => $item->Unit,
-                            'color' => $item->Variant,   
+                            'color' => $item->Variant,
                             'categoryId' => $catId,
                         ]
                     ];
                 }),
-
-
             ];
-
             return response()->json([
                 'order' => $formattedOrder
             ]);
@@ -528,7 +494,6 @@ class OrderController extends Controller
             return response()->json(['message' => 'Lỗi tải chi tiết đơn hàng', 'error' => $e->getMessage()], 500);
         }
     }
-
     public function merge(Request $request)
     {
         $user = JWTAuth::user();
@@ -673,7 +638,6 @@ class OrderController extends Controller
             return response()->json(['message' => 'Lỗi: ' . $e->getMessage()], 500);
         }
     }
-
     // GET /api/orders/ids
     public function getAllIds(Request $request)
     {
@@ -695,7 +659,6 @@ class OrderController extends Controller
 
         return response()->json($ids);
     }
-
     // POST /api/orders/split
     public function split(Request $request)
     {
@@ -785,9 +748,6 @@ class OrderController extends Controller
             return response()->json(['message' => 'Lỗi tách đơn: ' . $e->getMessage()], 500);
         }
     }
-
-
-
     public function search(Request $request)
     {
         $q = $request->query('q', '');
@@ -1015,18 +975,18 @@ class OrderController extends Controller
     }
     public function sendReminders(Request $request)
     {
-            $todayKey = 'mail_reminders_sent_' . Carbon::now()->format('Y-m-d');
-            if ($request->input('force') === true) {
-                Cache::forget($todayKey);
-                $message = 'Đã ép buộc gửi mail (Xóa cache cũ).';
-            } else {
-                $message = 'Đã kích hoạt kiểm tra nhắc nhở (Chế độ tự động).';
-            }
-            Artisan::call('mail:remind-pending');
-            $output = Artisan::output();
-            return response()->json([
-                'message' => $message,
-                'output' => $output  
-            ], 200);
-    }                      
+        $todayKey = 'mail_reminders_sent_' . Carbon::now()->format('Y-m-d');
+        if ($request->input('force') === true) {
+            Cache::forget($todayKey);
+            $message = 'Đã ép buộc gửi mail (Xóa cache cũ).';
+        } else {
+            $message = 'Đã kích hoạt kiểm tra nhắc nhở (Chế độ tự động).';
+        }
+        Artisan::call('mail:remind-pending');
+        $output = Artisan::output();
+        return response()->json([
+            'message' => $message,
+            'output' => $output
+        ], 200);
+    }
 }

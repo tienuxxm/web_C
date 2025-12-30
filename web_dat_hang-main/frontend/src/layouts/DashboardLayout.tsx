@@ -89,19 +89,17 @@ export default function DashboardLayout() {
           },
         }}
       />
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black relative overflow-hidden">
-        <BackgroundEffects />
-
-
-        <div className="relative z-10 flex flex-col min-h-screen">
-          <Header
+<div className="min-h-screen relative overflow-hidden bg-gray-50 dark:bg-slate-950 transition-colors duration-300">        
+  <BackgroundEffects />
+<div className="relative z-10 flex flex-col min-h-screen">          
+  <Header
             user={user}
             onToggleSidebar={() => setCollapsed(!collapsed)}
             sidebarCollapsed={collapsed}
             onPageChange={setCurrentPage}
           />
 
-          <div className="flex flex-1">
+          <div className="flex flex-1 pt-4 relative">
             <Sidebar
               collapsed={collapsed}
               userRole={user.role}
@@ -110,15 +108,23 @@ export default function DashboardLayout() {
               onPageChange={setCurrentPage}
               isMobile={isMobile}
             />
-            <main className={`flex-1 transition-all duration-300 overflow-y-auto  ${collapsed ? 'ml-16' : 'ml-64'}`}>
-              <div className="p-6 sm:p-4">
+           <main 
+              className={`flex-1 transition-all duration-300 overflow-y-auto ${
+                isMobile 
+                  ? 'ml-0 w-full' 
+                  : collapsed 
+                    ? 'ml-20'  // 👈 Sửa từ ml-16 thành ml-20
+                    : 'ml-64'
+              }`}
+            >
+              <div className="p-4 sm:p-6 pb-20 animate-fade-in">
                 {renderCurrentPage()}
               </div>
             </main>
           </div>
-          <div className="relative z-30 ">
+          {/* <div className="relative z-30 ">
             <Footer />
-          </div>
+          </div> */}
         </div>
       </div>
     </>

@@ -1,94 +1,89 @@
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Package } from 'lucide-react';
+import { X, Package, Save } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext'; // Import Theme Context
+import { createPortal } from 'react-dom';
 
 type Category = {id: number; name: string};
 
 interface Product {
   id: string;
   name: string;
-  sku: string;
+  code: string;
   category: string;
-  category_id: number|'';
-  price: number|'';
+  category_id: number | '';
+  price: number | '';
   status: 'active' | 'inactive' | 'out_of_stock';
-  image: string;
+  // image: string; // Đã xóa image
   description: string;
   createdAt: string;
   color: string;
-  barcode: string;
-  unit: string; 
+    unit: string; 
 }
 
-type ProductInput = Omit<Product, 'id' | 'createdAt' | 'sales'|'category'>;
-
+// Loại bỏ 'image' khỏi type input
+type ProductInput = Omit<Product, 'id' | 'createdAt' | 'category'>;
 
 interface ProductModalProps {
   product: Product | null;
   onSave: (data: FormData) => void;
   onClose: () => void;
   categories: Category[]; 
-  readOnly?:boolean;
-  role: 'nhan_vien' | 'pho_phong' | 'truong_phong';   
+  readOnly?: boolean;
+  role: 'nhan_vien' | 'pho_phong' | 'truong_phong' | string;   
 }
 
-
-const ProductModal: React.FC<ProductModalProps> = ({ product, onSave, onClose,categories,role,readOnly }) => {
-  const isManager = role === 'pho_phong' || role === 'truong_phong';
+const ProductModal: React.FC<ProductModalProps> = ({ product, onSave, onClose, categories, role, readOnly }) => {
+  const { theme } = useTheme(); // Lấy theme
+  const isManager = role === 'pho_phong' || role === 'truong_phong' || role === 'Administrator' || role === 'Leader';
+  
   const [formData, setFormData] = useState<ProductInput>({
     name: '',
-    sku: '',
+    code: '',
     category_id: '',
     price: '',
     color: '',
     status: 'active' ,
-    image: '',
     description: '',
-    barcode: '', 
-    unit:'',
+    unit: '',
   });
 
-
+  // Load dữ liệu khi sửa
   useEffect(() => {
     if (product) {
       setFormData({
         name: product.name,
-        sku: product.sku,
+        code: product.code,
         category_id: product.category_id,
         price: product.price,
         status: product.status,
-        image: product.image,
         description: product.description,
         color: product.color,
-        barcode: product.barcode, 
-        unit:product.unit,
+        unit: product.unit,
       });
     }
   }, [product]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  const form = new FormData();
+    e.preventDefault();
+    const form = new FormData();
 
-  form.append('name', formData.name);
-  form.append('sku', formData.sku);
+    form.append('name', formData.name);
+    form.append('code', formData.code);
 
-  // Chỉ append khi chắc chắn category_id là số hợp lệ
-  if (formData.category_id !== '' && !isNaN(Number(formData.category_id))) {
-    form.append('category_id', String(formData.category_id));
-  }
+    if (formData.category_id !== '' && !isNaN(Number(formData.category_id))) {
+      form.append('category_id', String(formData.category_id));
+    }
 
-  if (formData.price !== '') form.append('price', String(formData.price));
-  if (formData.status) form.append('status', formData.status);
-  if (formData.color) form.append('color', formData.color);
-  if (formData.barcode) form.append('barcode', formData.barcode); // Thêm barcode vào form
-  if (formData.description) form.append('description', formData.description);
-  if (imageFile) {form.append('image', imageFile);
+    if (formData.price !== '') form.append('price', String(formData.price));
+    if (formData.status) form.append('status', formData.status);
+    if (formData.color) form.append('color', formData.color);
+    if (formData.description) form.append('description', formData.description);
+    if (formData.unit) form.append('unit', formData.unit);
+    
+    // Đã xóa phần append image
 
-  }
-
-  await onSave(form);
-};
-
+    await onSave(form);
+  };
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -96,268 +91,191 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onSave, onClose,ca
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: ['price', 'stock', 'min_stock', 'category_id'].includes(name)
-        ? Number(value)
-        : value
+      [name]: ['price', 'category_id'].includes(name) ? Number(value) : value
     }));
   };
 
-  // Thêm state cho file
-const [imageFile, setImageFile] = useState<File | null>(null);
+  // --- CLASSES CSS (Theme Adaptive - Tương tự OrderModal) ---
+  const modalClass = theme === 'light' 
+    ? 'bg-white border-gray-200 shadow-2xl' 
+    : 'glass-panel glass-panel-dark border-white/10';
+    
+  const inputClass = `w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 transition-all text-sm sm:text-base ${
+    theme === 'light'
+      ? 'bg-gray-50 border-gray-200 text-gray-900 focus:ring-blue-500/30'
+      : 'bg-gray-800/50 border-gray-700 text-white focus:ring-blue-500/50 placeholder-gray-500'
+  } disabled:opacity-60 disabled:cursor-not-allowed`;
 
-const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (e.target.files && e.target.files[0]) {
-    setImageFile(e.target.files[0]);
-  }
-};
+  const labelClass = `block text-xs sm:text-sm font-medium mb-1.5 ${
+    theme === 'light' ? 'text-gray-700' : 'text-gray-300'
+  }`;
 
+  return createPortal (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+      <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl flex flex-col ${modalClass}`}>
+        
         {/* Header */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-700/50">
-          <h2 className="text-lg sm:text-2xl font-bold text-white">
-            {readOnly ? 'View Product':(product ? 'Edit Product' : 'Add New Product')}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-          >
-            <X className="h-6 w-6" />
+        <div className={`flex items-center justify-between p-5 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/10'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${theme === 'light' ? 'bg-blue-50 text-blue-600' : 'bg-blue-500/20 text-blue-400'}`}>
+              <Package className="h-6 w-6" />
+            </div>
+            <h2 className={`text-lg sm:text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
+              {readOnly ? 'Chi tiết sản phẩm' : (product ? 'Cập nhật sản phẩm' : 'Thêm sản phẩm mới')}
+            </h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-          {/* Product Image */}
+        <form onSubmit={handleSubmit} className="p-5 space-y-5">
+          
+          {/* Row 1: Product Name */}
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">
-              Product Image
-            </label>
-
-            <div className="flex items-center space-x-4">
-              {/* ảnh preview */}
-              <img
-                src={imageFile ? URL.createObjectURL(imageFile) : formData.image}
-                alt="Product preview"
-                className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover border border-gray-700"
-              />
-
-              {/* ---- URL + ChooseFile trong cùng 1 khung bo tròn ---- */}
-              <div className="flex w-full overflow-hidden rounded-xl border border-gray-700">
-                {/* input URL */}
-                <input
-                  type="url"
-                  name="image"
-                  value={formData.image}
-                  onChange={handleChange}
-                  disabled={readOnly}
-                  placeholder="Enter image URL"
-                  className="flex-1 px-3 sm:px-4 py-2 bg-gray-800/50 text-white placeholder-gray-400
-                            focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-                />
-
-                {/* input file ẩn */}
-                <input
-                  id="imageFileInput"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  disabled={readOnly}
-
-                  className="hidden"
-                />
-
-                {/* nút label đẹp */}
-                <label
-                  htmlFor="imageFileInput"
-                  className="px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600
-                            hover:from-blue-700 hover:to-cyan-700 text-white text-sm
-                            cursor-pointer select-none transition-all duration-200
-                            flex items-center justify-center"
-                >
-                  <span className="hidden sm:inline">Choose File</span>
-                  <span className="sm:hidden">Choose</span>
-                </label>
-              </div>
-            </div>
-
-            <p className="text-gray-400 text-xs sm:text-sm mt-1">
-              Enter a valid image URL or choose a file
-            </p>
-          </div>
-
-
-
-          {/* Product Name */}
-          <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Product Name</label>
+            <label className={labelClass}>Tên sản phẩm <span className="text-red-500">*</span></label>
             <input
-              type="text"
               name="name"
               value={formData.name}
-              disabled={readOnly}
-
               onChange={handleChange}
+              disabled={readOnly}
               required
-              className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-              placeholder="Enter product name"
+              className={inputClass}
+              placeholder="Nhập tên sản phẩm..."
             />
           </div>
 
-          {/* Min Stock and Category and Barcode */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-           
-          {/* <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Min Stock</label>
-            <input
-              type="number"
-              name="min_stock"
-              value={formData.min_stock}
-              onChange={handleChange}
-              min="0"
-              required
-              className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-              placeholder="0"
-          />
-          </div> */}
-
+          {/* Row 2: SKU & Category */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Category</label>
+              <label className={labelClass}>Mã SKU (Code)</label>
+              <input
+                name="sku"
+                value={formData.code} // Giá trị này sẽ lấy từ product.code
+                onChange={handleChange}
+                disabled={readOnly}
+                className={inputClass}
+                placeholder="Tự động nếu để trống"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Ngành hàng <span className="text-red-500">*</span></label>
               <select
                 name="category_id"
                 value={formData.category_id}
                 onChange={handleChange}
                 disabled={readOnly}
-
                 required
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
+                className={inputClass}
               >
-                {categories.map(category => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
+                <option value="">-- Chọn ngành --</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            {/* <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Barcode</label>
-              <input
-                type="text"
-                name="barcode"
-                value={formData.barcode}
-                onChange={handleChange}
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                placeholder="Enter product barcode"
-              />
-            </div> */}
+          </div>
+
+          {/* Row 3: Price, Color, Unit */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Price ($)</label>
+              <label className={labelClass}>Giá bán</label>
               <input
                 type="number"
                 name="price"
                 value={formData.price}
-                disabled={readOnly}
-
                 onChange={handleChange}
+                disabled={readOnly}
                 min="0"
                 required
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
+                className={inputClass}
                 placeholder="0"
               />
             </div>
             <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Color</label>
+              <label className={labelClass}>Màu sắc</label>
               <input
-                type="text"
                 name="color"
                 value={formData.color}
                 onChange={handleChange}
                 disabled={readOnly}
-
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                placeholder="Color"
+                className={inputClass}
+                placeholder="VD: Đen, Xanh..."
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Đơn vị tính</label>
+              <input
+                name="unit"
+                value={formData.unit}
+                onChange={handleChange}
+                disabled={readOnly}
+                className={inputClass}
+                placeholder="Cái, Hộp..."
               />
             </div>
           </div>
 
-          {/* Price and Stock */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            
-            {/* <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Stock Quantity</label>
-              <input
-                type="number"
-                name="stock"
-                value={formData.stock}
-                onChange={handleChange}
-                min="0"
-                required
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                placeholder="0"
-              />
-            </div> */}
-            
-
-          </div>
-
-                   
-          {/* Status */}
+          {/* Row 4: Status (Chỉ quản lý mới thấy) */}
           {isManager && (
-          <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Status</label>
-            <select
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
+             <div>
+               <label className={labelClass}>Trạng thái</label>
+               <select
+                 name="status"
+                 value={formData.status}
+                 onChange={handleChange}
+                 disabled={readOnly}
+                 className={inputClass}
+               >
+                 <option value="active">Đang hoạt động</option>
+                 <option value="inactive">Ngừng hoạt động</option>
+               </select>
+             </div>
           )}
-          {/* Description */}
+
+          {/* Row 5: Description */}
           <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Description</label>
+            <label className={labelClass}>Mô tả</label>
             <textarea
               name="description"
               value={formData.description}
               onChange={handleChange}
               disabled={readOnly}
-
               rows={4}
-              className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 resize-none text-sm sm:text-base"
-              placeholder="Enter product description"
+              className={`${inputClass} resize-none`}
+              placeholder="Thông tin chi tiết về sản phẩm..."
             />
           </div>
 
           {/* Actions */}
-          <div className="flex flex-col sm:flex-row items-center justify-end space-y-2 sm:space-y-0 sm:space-x-4 pt-4 border-t border-gray-700/50">
+          <div className="flex justify-end gap-3 pt-2 border-t border-gray-700/10 dark:border-white/10">
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 text-gray-400 hover:text-white transition-colors text-sm sm:text-base"
+              className={`px-5 py-2.5 rounded-xl font-medium transition-all ${
+                theme === 'light' 
+                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10'
+              }`}
             >
-              {readOnly ? 'Close':'Cancel'}
-
+              {readOnly ? 'Đóng' : 'Hủy'}
             </button>
             {!readOnly && (
               <button
-              type="submit"
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 text-sm sm:text-base"
-            >
-              {product ? 'Update Product' : 'Create Product'}
-            </button>
-            )
-
-            }
-            
+                type="submit"
+                className="px-5 py-2.5 rounded-xl font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-lg shadow-blue-500/20 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                {product ? 'Cập nhật' : 'Thêm mới'}
+              </button>
+            )}
           </div>
+
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

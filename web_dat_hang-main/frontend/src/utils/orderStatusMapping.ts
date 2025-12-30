@@ -2,9 +2,10 @@ import { Clock, CheckCircle2, AlertCircle, TrendingUp } from 'lucide-react';
 
 interface StatConfig {
   label: string;
-  color: string; // class color của tailwind
+  color: string; 
   icon: any;
   description: string;
+  bg: string;
 }
 
 export const getStatConfig = (
@@ -16,15 +17,17 @@ export const getStatConfig = (
   if ( role === 'Sales') {
     return {
       pending: {
-        label: 'Pending',
+        label: 'Chờ duyệt',
         description: 'Đơn cần hoàn thiện gửi đi',
-        color: 'bg-yellow-500/10 text-yellow-500',
+        color: 'text-yellow-500',
+        bg: 'bg-yellow-500/10',
         icon: AlertCircle
       },
       processing: {
-        label: 'Processing',
+        label: 'Đang xử lý',
         description: 'Đã gửi Cung ứng/Sếp',
-        color: 'bg-blue-500/10 text-blue-500',
+        color: ' text-blue-500',
+        bg: 'bg-blue-500/10',
         icon: Clock
       }
     };
@@ -34,15 +37,17 @@ export const getStatConfig = (
   if (role === 'Supply' ) {
     return {
       pending: {
-        label: 'Pending',
+        label: 'Chờ duyệt',
         description: 'Đơn mới từ Sales hoặc Đã duyệt',
-        color: 'bg-red-500/10 text-red-500', // Màu đỏ để báo động việc cần làm ngay
+        color: ' text-red-500', // Màu đỏ để báo động việc cần làm ngay
+        bg: 'bg-red-500/10',
         icon: AlertCircle
       },
       processing: {
-        label: 'Processing',
+        label: 'Đang xử lý',
         description: 'Chờ sếp duyệt hoặc chờ hàng về',
-        color: 'bg-indigo-500/10 text-indigo-500',
+        color: ' text-indigo-500',
+        bg: 'bg-indigo-500/10',
         icon: TrendingUp
       }
     };
@@ -52,15 +57,17 @@ export const getStatConfig = (
   if ( role === 'Leader') {
     return {
       pending: {
-        label: 'Pending',
+        label: 'Chờ duyệt',
         description: 'Đơn cần phê duyệt ngay',
-        color: 'bg-orange-500/10 text-orange-500',
+        color: ' text-orange-500',
+        bg: 'bg-orange-500/10',
         icon: AlertCircle
       },
       processing: {
-        label: 'Processing',
+        label: 'Đang xử lý',
         description: 'Đơn đã duyệt, đang chạy',
-        color: 'bg-emerald-500/10 text-emerald-500',
+        color: ' text-emerald-500',
+        bg : 'bg-emerald-500/10',
         icon: CheckCircle2
       }
     };
@@ -68,8 +75,8 @@ export const getStatConfig = (
 
   // --- MẶC ĐỊNH ---
   return {
-    pending: { label: 'pending', description: 'Pending', color: 'bg-gray-500/10', icon: Clock },
-    processing: { label: 'processing', description: 'Processing', color: 'bg-blue-500/10', icon: TrendingUp }
+    pending: { label: 'pending', description: 'Pending', color: 'bg-gray-500/10', bg: 'bg-gray-500/10',icon: Clock },
+    processing: { label: 'processing', description: 'Processing', color: 'bg-blue-500/10',bg: 'bg-blue-500/10', icon: TrendingUp }
   };
 };
 

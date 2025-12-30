@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Package } from 'lucide-react';
+import { X, Plus, Trash2, ShoppingBag,Save} from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { getCurrentUser } from '../../utils/auth';
 import MySwal from '../../utils/swal';
+import { useTheme } from '../../context/ThemeContext';
+import { createPortal } from 'react-dom';
 
 interface OrderItem {
   id?: string | number;
@@ -87,6 +89,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const { theme } = useTheme();
   const [formData, setFormData] = useState({
     orderNumber: '',
     supplier_name: '',
@@ -193,8 +196,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         supplier_name: order.supplierName ?? '',
 
         items: order.items.map((it: any) => {
-         
-
           return {
             id: it.id, 
             productId: it.product.id,
@@ -206,8 +207,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
             color: it.product.color
           };
         }),
-        // 👆 HẾT KHU VỰC QUAN TRỌNG
-
         subtotal: order.subtotal,
         tax: order.tax,
         shipping: order.shipping,
@@ -221,10 +220,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       });
 
     } else {
-      // === CHẾ ĐỘ TẠO MỚI ===
       setSelectedCategoryId('');
       setProducts([]);
-      // Reset form data về mặc định
       setFormData({
         orderNumber: '',
         supplier_name: '',
@@ -251,7 +248,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     const tax = 0;
     const shipping = 0;
     const total = subtotal;
-
     setFormData(prev => ({
       ...prev,
       subtotal,
@@ -339,19 +335,14 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   };
 
 
-  // ✅ LOGIC MỚI: REMOVE ITEM VỚI SWEETALERT2
   const removeItem = async (index: number) => {
     const itemToRemove = formData.items[index];
 
-    // Điều kiện kiểm tra (Giữ nguyên)
     const isMergeOrder = formData.orderNumber?.startsWith('MP');
     const isDraft = Number(formData.status) === 8;
-    // Fallback: Tìm ID từ item hoặc từ logic khác nếu cần
     const realId = itemToRemove.id;
     const hasRealId = realId && !String(realId).startsWith('temp');
-
     if (isMergeOrder && isDraft && hasRealId) {
-      // 👇 THAY THẾ WINDOW.CONFIRM BẰNG MYSWAL
       const result = await MySwal.fire({
         title: '📦 Tách Đơn Hàng?',
         html: `
@@ -364,13 +355,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         showCancelButton: true,
         confirmButtonText: 'Đồng ý, Tách ngay',
         cancelButtonText: 'Hủy bỏ',
-        reverseButtons: true // Đảo vị trí nút cho thuận tay
+        reverseButtons: true 
       });
-
-      // 👇 Kiểm tra kết quả bấm nút
       if (result.isConfirmed) {
         try {
-          // Hiển thị loading khi đang gọi API
           MySwal.fire({
             title: 'Đang xử lý...',
             text: 'Vui lòng chờ trong giây lát',
@@ -403,8 +391,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
         } catch (error: any) {
           console.error("Lỗi tách đơn:", error);
-
-          // Thông báo lỗi đẹp
           MySwal.fire({
             icon: 'error',
             title: 'Lỗi',
@@ -412,11 +398,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
           });
         }
       }
-      return; // Dừng, không chạy logic xóa thường bên dưới
+      return; 
     }
-
-    // --- Logic xóa thường (cho đơn PO hoặc item mới thêm) ---
-    // Có thể thêm confirm nhẹ cho xóa thường nếu muốn
     setFormData(prev => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== index)
@@ -450,33 +433,25 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     if (products.length === 0 || formData.items.length === 0) return;
 
   }, [products, formData.items]);
-  // Thêm hàm này vào trong OrderModal component
-  // Trong OrderModal.tsx
-
   const getAvailableStatuses = () => {
-    // Nếu tạo mới -> Chỉ có 1 trạng thái là "Mới"
     if (!allStatuses || allStatuses.length === 0) return [];
     if (!order) return allStatuses.filter(s => s.Type === 1);
     const currentStatus = Number(order.status);
     const role = currentUser?.role?.name_role;
     const dept = currentUser?.department?.name_department;
-
     if (role === 'Administrator') {
       return allStatuses;
     }
-    let allowedTypes: number[] = [currentStatus]; // Luôn giữ trạng thái hiện tại
-
-    // --- A. KINH DOANH (Sales) & IT ---
+    let allowedTypes: number[] = [currentStatus]; 
     if (role === 'Sales') {
       if (currentStatus === 1 || currentStatus === 10 || currentStatus === 9) {
         console.log('debug', allowedTypes)
-        allowedTypes.push(1); // Gửi lại (Mới)
+        allowedTypes.push(1); 
       }
     }
 
-    // --- B. CUNG ỨNG / HÀNH CHÍNH / IT ---
     else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam'|| role === 'Supply') {
-      // B1. Nhận đơn Mới (1)
+      // B1.  đơn Mới (1)
       if (currentStatus === 1) {
         allowedTypes.push(7); // Chốt
         allowedTypes.push(10); // Trả về
@@ -513,323 +488,336 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
 
 
+// --- CLASSES CSS (Theme Adaptive) ---
+  const modalClass = theme === 'light' 
+    ? 'bg-white border-gray-200 shadow-2xl' 
+    : 'glass-panel glass-panel-dark border-white/10';
+    
+  const inputClass = `w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 transition-all text-sm sm:text-base ${
+    theme === 'light'
+      ? 'bg-gray-50 border-gray-200 text-gray-900 focus:ring-blue-500/30'
+      : 'bg-gray-800/50 border-gray-700 text-white focus:ring-blue-500/50 placeholder-gray-500'
+  } disabled:opacity-60 disabled:cursor-not-allowed`;
 
+  const labelClass = `block text-xs sm:text-sm font-medium mb-1.5 ${
+    theme === 'light' ? 'text-gray-700' : 'text-gray-300'
+  }`;
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto mx-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" 
+        onClick={onClose}
+      />
+
+      {/* Modal Container */}
+      <div className={`relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl flex flex-col ${modalClass}`}>
+        
         {/* Header */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-700/50">
-          <h2 className="text-lg sm:text-2xl font-bold text-white">
-            {readOnly ? 'View Order' : (order ? 'Edit Order' : 'Create New Order')}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-          >
-            <X className="h-6 w-6" />
+        <div className={`flex items-center justify-between p-5 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/10'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${theme === 'light' ? 'bg-blue-50 text-blue-600' : 'bg-blue-500/20 text-blue-400'}`}>
+              <ShoppingBag className="h-6 w-6" />
+            </div>
+            <h2 className={`text-lg sm:text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
+              {readOnly ? 'Chi tiết đơn hàng' : (order ? 'Cập nhật đơn hàng' : 'Tạo đơn mới')}
+            </h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-          {/* Order Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {!!order && (
-              <div>
-                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Number</label>
-                <input
-                  type="text"
-                  name="orderNumber"
-                  value={formData.orderNumber}
-                  onChange={handleChange}
-                  required
-                  disabled
-                  className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                  placeholder="Enter order number"
-                />
-              </div>
-            )}
+        {/* Content Form */}
+        <form onSubmit={handleSubmit} className="p-5 space-y-6">
+          
+          {/* 1. General Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Cột trái */}
+            <div className="space-y-4">
+               {/* Order No (Chỉ hiện khi edit) */}
+               {!!order && (
+                 <div>
+                   <label className={labelClass}>Mã đơn hàng</label>
+                   <input value={formData.orderNumber} disabled className={inputClass} />
+                 </div>
+               )}
+               {/* Category */}
+               <div>
+                 <label className={labelClass}>Ngành hàng <span className="text-red-500">*</span></label>
+                 <select
+                    name="industry_id"
+                    value={selectedCategoryId}
+                    onChange={(e) => {
+                      setSelectedCategoryId(e.target.value);
+                      setFormData(prev => ({ ...prev, items: [] }));
+                    }}
+                    disabled={!!order || readOnly}
+                    className={inputClass}
+                 >
+                    <option value="">-- Chọn ngành hàng --</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                 </select>
+               </div>
+               {/* Supplier */}
+               <div>
+                 <label className={labelClass}>Nhà cung cấp <span className="text-red-500">*</span></label>
+                 <input
+                   name="supplier_name"
+                   value={formData.supplier_name}
+                   onChange={handleChange}
+                   disabled={readOnly}
+                   required
+                   placeholder="Nhập tên NCC..."
+                   className={inputClass}
+                 />
+               </div>
+            </div>
 
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Date</label>
-              <input
-                type="date"
-                name="orderDate"
-                value={formData.orderDate}
-                onChange={handleChange}
-                required
-                disabled // Không cho sửa nếu là đơn đã có
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-              />
+            {/* Cột phải */}
+            <div className="space-y-4">
+               <div>
+                 <label className={labelClass}>Ngày đặt hàng</label>
+                 <input
+                   type="date"
+                   name="orderDate"
+                   value={formData.orderDate}
+                   onChange={handleChange}
+                   disabled={!!order || readOnly}
+                   className={inputClass}
+                 />
+               </div>
+               <div>
+                 <label className={labelClass}>Mục đích sử dụng</label>
+                 <input
+                   name="intendedUse"
+                   value={formData.intendedUse}
+                   onChange={handleChange}
+                   disabled={readOnly}
+                   placeholder="VD: Mua bán, Nội bộ..."
+                   className={inputClass}
+                 />
+               </div>
             </div>
           </div>
 
-          {/* Customer Information */}
-          <div className="space-y-4">
-            <h3 className="text-base sm:text-lg font-semibold text-white">Supplier Information</h3>
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Supplier Name</label>
-              <input
-                type="text"
-                name="supplier_name"
-                value={formData.supplier_name}
-                onChange={handleChange}
-                required
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                placeholder="Enter supplier name"
-                disabled={!!order}
-
-              />
-            </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Intended Use</label>
-              <input
-                type="text"
-                name="intendedUse"
-                value={formData.intendedUse}
-                onChange={handleChange}
-                required
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 text-sm sm:text-base"
-                placeholder="Enter Intened Use"
-                disabled={!!order}
-
-              />
-            </div>
-          </div>
-
-          {/* Dropdown Category */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-300 mb-2">Ngành hàng</label>
-            <select
-              value={selectedCategoryId}
-              onChange={(e) => {
-                const newVal = e.target.value;
-                setSelectedCategoryId(newVal);
-                setFormData(prev => ({ ...prev, items: [] })); // Reset items nếu đổi ngành
-              }}
-              // 👇 QUAN TRỌNG: Khóa cứng nếu đang Sửa đơn hàng (có order)
-              disabled={!!order}
-              className={`w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white 
-                ${!!order ? 'opacity-60 cursor-not-allowed' : ''}`} 
-                >
-              <option value="">-- Chọn ngành hàng --</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
-          {/* Order Items */}
-          <div className="space-y-4">
+          {/* 2. Order Items */}
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-base sm:text-lg font-semibold text-white">Order Items</h3>
-              {
-                !readOnly && canEditDetails &&(
-                  <button
-                    type="button"
-                    onClick={addItem}
-                    disabled={!selectedCategoryId}
-                    className={`flex items-center px-4 py-2 rounded-lg transition-colors ${!selectedCategoryId
-                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span className="hidden sm:inline">Add Item</span>
-                    <span className="sm:hidden">Add</span>
-                  </button>
-                )
-              }
+               <h3 className={`text-base font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-white'}`}>Danh sách sản phẩm</h3>
+               {!readOnly && canEditDetails && (
+                 <button
+                   type="button"
+                   onClick={addItem}
+                   disabled={!selectedCategoryId}
+                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                     !selectedCategoryId 
+                       ? 'bg-gray-100 text-gray-400 dark:bg-gray-800 cursor-not-allowed'
+                       : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-blue-500/30'
+                   }`}
+                 >
+                   <Plus className="h-4 w-4" /> Thêm sản phẩm
+                 </button>
+               )}
             </div>
-            {formData.items.map((item, index) => {
-              const fallbackProduct = products.find(p => p.code === item.productCode);
-              const currentValue = item.productId || fallbackProduct?.id || '';         
-              return (
-                <div key={index} className="bg-gray-800/30 rounded-xl p-3 sm:p-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                    <div className="sm:col-span-5 ">
-                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Product</label>
-                      {String(selectedCategoryId) === '18' ? (
-                        <input
-                          type="text"
-                          placeholder="Nhập tên sản phẩm..."
-                          value={item.productName}
-                          disabled={readOnly||!canEditDetails}
-                          onChange={(e) => updateItem(index, 'productName', e.target.value)}
-                          className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-yellow-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-yellow-500/50 text-sm"
-                        />
-                      ) : (
-                        readOnly ?  (
-                          <div 
-                          className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base">
-                            {item.productName}
-                          </div>
+
+            {/* List Items */}
+           <div className="space-y-3">
+              {formData.items.map((item, index) => {
+                const fallbackProduct = products.find(p => p.code === item.productCode);
+                const currentValue = item.productId || fallbackProduct?.id || '';
+                
+                return (
+                  <div key={index} className={`p-4 rounded-xl border transition-all ${
+                     theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'
+                  }`}>
+                    {/* Grid 12 cột */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                      
+                      {/* 1. Sản phẩm (3 cột) */}
+                      <div className="sm:col-span-3">
+                        <label className={labelClass}>Sản phẩm</label>
+                        {String(selectedCategoryId) === '18' ? (
+                          <input 
+                            value={item.productName} 
+                            onChange={e => updateItem(index, 'productName', e.target.value)}
+                            disabled={readOnly || !canEditDetails}
+                            placeholder="Tên sản phẩm..."
+                            className={inputClass}
+                          />
                         ) : (
-                          <select
-                            value={currentValue}
-                            disabled={!canEditDetails}
-                            onChange={(e) => updateItem(index, 'productId', e.target.value)}
-                            className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
+                          readOnly ? (
+                            <div className={`truncate ${inputClass} bg-transparent border-none px-0`}>{item.productName}</div>
+                          ) : (
+                            <select
+                              value={currentValue}
+                              onChange={e => updateItem(index, 'productId', e.target.value)}
+                              disabled={!canEditDetails}
+                              className={inputClass}
+                            >
+                              <option value="">Chọn sản phẩm...</option>
+                              {products.map(p => (
+                                <option key={p.id} value={p.id}> {p.name}</option>
+                              ))}
+                            </select>
+                          )
+                        )}
+                      </div>
+
+                      {/* 2. Màu sắc (2 cột) - MỚI THÊM */}
+                      <div className="sm:col-span-2">
+                        <label className={labelClass}>Màu sắc</label>
+                        <input
+                          value={item.color}
+                          disabled 
+                          className={inputClass}
+                        />
+                      </div>
+
+                      {/* 3. SL Yêu cầu (2 cột) */}
+                      <div className="sm:col-span-2">
+                        <label className={labelClass}>SL Yêu cầu</label>
+                        <input
+                          type="number"
+                          value={item.quantityOld}
+                          onChange={e => updateItem(index, 'quantityOld', Number(e.target.value))}
+                          disabled={readOnly || !canEditDetails}
+                          className={inputClass}
+                        />
+                      </div>
+
+                      {/* 4. SL Duyệt (2 cột) */}
+                      <div className="sm:col-span-2">
+                        <label className={labelClass}>SL Duyệt</label>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={e => updateItem(index, 'quantity', Number(e.target.value))}
+                          disabled={readOnly || !canEditDetails}
+                          className={`${inputClass} ${theme === 'dark' ? 'focus:border-yellow-500' : ''}`}
+                        />
+                      </div>
+
+                      {/* 5. Đơn giá (2 cột) */}
+                      <div className="sm:col-span-2">
+                        <label className={labelClass}>Đơn giá</label>
+                        <input
+                          type="number"
+                          value={item.price}
+                          onChange={e => updateItem(index, 'price', Number(e.target.value))}
+                          disabled={String(selectedCategoryId) !== '18' || readOnly}
+                          className={inputClass}
+                        />
+                      </div>
+
+                      {/* 6. Xóa (1 cột) */}
+                      {!readOnly && (
+                        <div className="sm:col-span-1 flex justify-center pb-1">
+                          <button
+                            type="button"
+                            onClick={() => removeItem(index)}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
+                            title="Xóa dòng"
                           >
-                            <option value="">Select a product</option>
-                            {products.map(product => (
-                              <option key={product.id} value={product.id}>
-                                [{product.code}] - {product.name} {product.color ? `(${product.color})` : ''}
-                              </option>
-                            )
-                            )}
-                          </select>
-                        ))}
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {/* Các phần Quantity, Price, Delete */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Quantity</label>
-                      <input
-                        value={item.quantity}
-                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value)||1 )}
-                        disabled={!canEditDetails}
-                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">QuantityOld</label>
-                      <input
-                        value={item.quantityOld}
-                        onChange={(e) => updateItem(index, 'quantityOld', parseInt(e.target.value)||1 )}
-                        disabled={!canEditDetails}
-                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Price</label>
-                      <input
-                        value={item.price}
-                        disabled={String(selectedCategoryId) !== '18'||!canEditDetails}
-                        onChange={(e) => updateItem(index, 'price', parseFloat(e.target.value) || 0)}
-                        className={`w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base
-                        ${String(selectedCategoryId) === '18' ? 'border-yellow-600/50' : ''} `}
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Color</label>
-                      <input
-                        value={item.color}
-                        disabled
-                        onChange={(e) => updateItem(index, 'color', parseFloat(e.target.value))}
-                        className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-                      />
-                    </div>
-                    {!readOnly && (
-                    <div className="flex justify-center sm:col-span-1">
-                      <button
-                        type="button"
-                        onClick={() => removeItem(index)}
-                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    )}
                   </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 3. Footer Summary & Status */}
+          <div className={`p-4 rounded-xl border ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-black/20 border-white/5'}`}>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="flex-1 w-full sm:w-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <div>
+                      <label className={labelClass}>Trạng thái đơn</label>
+                      <select
+                        name="status"
+                        value={formData.status}
+                        disabled={readOnly}
+                        onChange={(e) => {
+                           const val = Number(e.target.value);
+                           setFormData(prev => ({ ...prev, status: val }));
+                           if (val === 5) toast('Nhớ nhập lý do hủy vào ghi chú!', { icon: '📝' });
+                        }}
+                        className={inputClass}
+                      >
+                        {getAvailableStatuses().map(s => (
+                          <option key={s.ID} value={s.Type}>{s.Name}</option>
+                        ))}
+                      </select>
+                   </div>
+                   <div>
+                      <label className={labelClass}>Ngày giao dự kiến</label>
+                      <input
+                        type="date"
+                        name="estimatedDelivery"
+                        value={formData.estimatedDelivery}
+                        min={formData.orderDate}
+                        disabled={!canEditDetails && !readOnly}
+                        onChange={handleChange}
+                        className={inputClass}
+                      />
+                   </div>
                 </div>
-              );
-            })}
+                
+
+             </div>
+             <div className="text-right min-w-[200px]">
+                   <p className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>Tổng tiền</p>
+                   <p className={`text-2xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
+                      {formData.total.toLocaleString()} ₫
+                   </p>
+                </div>
+             {/* Notes */}
+             <div className="mt-4">
+                <label className={labelClass}>Ghi chú</label>
+                <textarea
+                  name="notes"
+                  value={formData.notes}
+                  onChange={handleChange}
+                  rows={2}
+                  disabled={readOnly}
+                  className={inputClass}
+                  placeholder="Ghi chú thêm..."
+                />
+             </div>
           </div>
 
-          {/* Order Summary */}
-          <div className="bg-gray-800/30 rounded-xl p-4">
-            <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Order Summary</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between text-gray-300 text-sm sm:text-base">
-                <span>Subtotal:</span>
-                <span>{formData.subtotal.toFixed(2)} VNĐ</span>
-              </div>
-      
-              <hr className="border-gray-700" />
-              <div className="flex justify-between text-white font-semibold text-base sm:text-lg">
-                <span>Total:</span>
-                <span>{Number(formData.total).toFixed(2)} VNĐ</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Status and Additional Info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Status</label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setFormData(prev => ({ ...prev, status: val }));
-
-                  // Gợi ý User nhập Note nếu chọn Hủy hoặc Trả về
-                  if (val === 5 || val === 17) {
-                    toast('Vui lòng nhập lý do vào ô Ghi chú', { icon: '📝' });
-                  }
-                }}
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-
-              >/
-
-                {getAvailableStatuses().map(status => {
-                  return (
-                    <option key={status.ID} value={status.Type}>{status.Name.toUpperCase()}</option>
-
-                  );
-                })}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Estimated Delivery</label>
-              <input
-                type="date"
-                name="estimatedDelivery"
-                value={formData.estimatedDelivery}
-                min={formData.orderDate}
-                disabled={!canEditDetails}
-                onChange={handleChange}
-                className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base"
-              />
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Order Notes</label>
-            <textarea
-              name="notes"
-              value={formData.notes}
-              onChange={handleChange}
-              rows={3}
-              className="w-full px-3 sm:px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none text-sm sm:text-base"
-              placeholder="Enter any special instructions or notes"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row items-center justify-end space-y-2 sm:space-y-0 sm:space-x-4 pt-4 border-t border-gray-700/50">
+          {/* 4. Action Buttons */}
+          <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 text-gray-400 hover:text-white transition-colors text-sm sm:text-base"
+              className={`px-5 py-2.5 rounded-xl font-medium transition-all ${
+                theme === 'light' 
+                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10'
+              }`}
             >
-              Cancel
+              Đóng
             </button>
             {!readOnly && (
               <button
                 type="submit"
-                className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 text-sm sm:text-base"
+                className="px-5 py-2.5 rounded-xl font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-lg shadow-blue-500/20 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2"
               >
-                {order ? 'Update Order' : 'Create Order'}
+                <Save className="h-4 w-4" />
+                {order ? 'Cập nhật' : 'Tạo đơn hàng'}
               </button>
             )}
           </div>
+
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

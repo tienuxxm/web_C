@@ -1,73 +1,60 @@
 import React, { useState, useEffect } from 'react';
-import { X, Folder,Plus,Trash2  } from 'lucide-react';
-
+import { X, Folder, Plus, Trash2, Mail, Save } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
+import { createPortal } from 'react-dom';
 interface Category {
   id: string;
   name: string;
   description: string;
   status: 'active' | 'inactive';
   prefix: string;
-  user_emails?:string[];
+  user_emails?: string[];
 }
 
 interface CategoryModalProps {
   category: Category | null;
   onSave: (category: Omit<Category, 'id'> & { user_emails?: string[] }) => void;
   onClose: () => void;
-  readOnly?:boolean;
+  readOnly?: boolean;
 }
 
-const CategoryModal: React.FC<CategoryModalProps> = ({ category, onSave, onClose , readOnly = false }) => {
-  const [formData, setFormData] = useState<Omit<Category, 'id'>>({
+const CategoryModal: React.FC<CategoryModalProps> = ({ category, onSave, onClose, readOnly = false }) => {
+  const { theme } = useTheme();
+ const [formData, setFormData] = useState({
+    id: '',
     name: '',
     description: '',
-    status: 'active',
+    status: 'active' as 'active' | 'inactive',
     prefix: '',
   });
   const [userEmails, setUserEmails] = useState<string[]>([]);
-
-
-// Trong file CategoryModal.tsx
-
   useEffect(() => {
     if (category) {
-      // 1. Fill dữ liệu cơ bản
       setFormData({
+        id: category.id,
         name: category.name,
         description: category.description,
         status: category.status,
         prefix: category.prefix,
       });
-
-      // 2. Xử lý logic hiển thị Email (SỬA LẠI ĐOẠN NÀY)
-      
-      // Ưu tiên 1: Nếu có key 'user_emails' (Chuẩn mới mình định nghĩa)
       if (category.user_emails && Array.isArray(category.user_emails)) {
         setUserEmails(category.user_emails);
-      } 
-      // Ưu tiên 2: Nếu API trả về key 'users' (Dữ liệu thực tế bạn đang gặp)
+      }
       else if ('users' in category && Array.isArray((category as any).users)) {
         const rawUsers = (category as any).users;
-        
-        // KIỂM TRA QUAN TRỌNG: Xem dữ liệu bên trong là String hay Object
         if (rawUsers.length > 0 && typeof rawUsers[0] === 'string') {
-           // Trường hợp API trả về: ["a@b.com", "c@d.com"]
-           // -> Gán trực tiếp luôn, không cần .email
-           setUserEmails(rawUsers);
+          setUserEmails(rawUsers);
         } else {
-           // Trường hợp cũ (nếu có): [{email: "a@b.com"}, ...]
-           // -> Lúc này mới cần .map(u => u.email)
-           const emails = rawUsers.map((u: any) => u.email || '');
-           setUserEmails(emails);
+          const emails = rawUsers.map((u: any) => u.email || '');
+          setUserEmails(emails);
         }
-      } 
+      }
       else {
         setUserEmails([]);
       }
-
     } else {
-      // Reset form khi tạo mới
       setFormData({
+        id: '',
         name: '',
         description: '',
         status: 'active',
@@ -85,194 +72,199 @@ const CategoryModal: React.FC<CategoryModalProps> = ({ category, onSave, onClose
     }));
   };
 
- const handleSubmit = (e: React.FormEvent) => {
-  e.preventDefault();
-  const payload = {
-    ...formData,
-    user_emails: userEmails.filter(email => email.trim() !== '')
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      ...formData,
+      user_emails: userEmails.filter(email => email.trim() !== '')
+    };
+    onSave(payload);
   };
-  onSave(payload);
-};
 
-  const addUserEmail = () => {setUserEmails([...userEmails, '']);};
+  const addUserEmail = () => { setUserEmails([...userEmails, '']); };
   const updateUserEmail = (index: number, value: string) => {
-  const updated = [...userEmails];
-  updated[index] = value;
-  setUserEmails(updated);
+    const updated = [...userEmails];
+    updated[index] = value;
+    setUserEmails(updated);
   };
 
   const removeUserEmail = (index: number) => {
-  const updated = [...userEmails];
-  updated.splice(index, 1);
-  setUserEmails(updated);
+    const updated = [...userEmails];
+    updated.splice(index, 1);
+    setUserEmails(updated);
   };
-//   useEffect(() => {
-//   if (category) {
-//     setFormData({
-//       name: category.name,
-//       description: category.description,
-//       status: category.status,
-//       prefix: category.prefix,
-//     });
+  //   useEffect(() => {
+  //   if (category) {
+  //     setFormData({
+  //       name: category.name,
+  //       description: category.description,
+  //       status: category.status,
+  //       prefix: category.prefix,
+  //     });
 
-//     // Gán danh sách email từ category.users
-//     if ('users' in category && Array.isArray((category as any).users)) {
-//       const users = (category as any).users as { email: string }[];
-//       const emails = users.map(u => u.email);
-//       setUserEmails(emails);
-//     } else {
-//       setUserEmails([]);
-//     }
-//   }
-// }, [category]);
+  //     // Gán danh sách email từ category.users
+  //     if ('users' in category && Array.isArray((category as any).users)) {
+  //       const users = (category as any).users as { email: string }[];
+  //       const emails = users.map(u => u.email);
+  //       setUserEmails(emails);
+  //     } else {
+  //       setUserEmails([]);
+  //     }
+  //   }
+  // }, [category]);
 
 
+  const modalClass = theme === 'light'
+    ? 'bg-white border-gray-200 shadow-2xl'
+    : 'glass-panel glass-panel-dark border-white/10';
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900/95 backdrop-blur-xl border border-gray-700/50 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+  const inputClass = `w-full px-4 py-2.5 rounded-xl border focus:outline-none focus:ring-2 transition-all text-sm sm:text-base ${theme === 'light'
+      ? 'bg-gray-50 border-gray-200 text-gray-900 focus:ring-blue-500/30'
+      : 'bg-gray-800/50 border-gray-700 text-white focus:ring-blue-500/50 placeholder-gray-500'
+    } disabled:opacity-60 disabled:cursor-not-allowed`;
+
+  const labelClass = `block text-xs sm:text-sm font-medium mb-1.5 ${theme === 'light' ? 'text-gray-700' : 'text-gray-300'
+    }`;
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+      {/* Backdrop click to close */}
+      <div className="absolute inset-0" onClick={onClose} />
+
+      <div className={`relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl flex flex-col ${modalClass}`}>
+
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700/50">
-          <h2 className="text-2xl font-bold text-white">
-            {readOnly ? 'View Category':(category ? 'Edit Category' : 'Add New Category')}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg"
-          >
-            <X className="h-6 w-6" />
+        <div className={`flex items-center justify-between p-5 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/10'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${theme === 'light' ? 'bg-blue-50 text-blue-600' : 'bg-blue-500/20 text-blue-400'}`}>
+              <Folder className="h-6 w-6" />
+            </div>
+            <h2 className={`text-lg sm:text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
+              {readOnly ? 'Chi tiết danh mục' : (category ? 'Cập nhật danh mục' : 'Thêm danh mục mới')}
+            </h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Category Name</label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              disabled={readOnly}
-              required
-              placeholder="Enter category name"
-              className="w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
-            />
-            
-          </div>
-          {/* Prefix */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Prefix</label>
-            <input
-              type="text"
-              name="prefix"
-              value={formData.prefix}
-              onChange={handleChange}
-              disabled={readOnly}              
-              required
-              className="w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
-              placeholder="Enter prefix"
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
 
-          <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-white">Assigned Users</h3>
-            {!readOnly &&(
-              <button
-              type="button"
-              onClick={addUserEmail}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Add User</span>
-            </button>
-            )}
-            
-          </div>
-          {userEmails.map((email, index) => (
-            <div key={index} className="flex gap-2 items-center">
+          {/* Row 1: Name & Prefix */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Tên danh mục <span className="text-red-500">*</span></label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => updateUserEmail(index, e.target.value)}
-                placeholder="User email"
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
                 disabled={readOnly}
-
-                className="flex-1 px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
+                required
+                placeholder="Nhập tên..."
+                className={inputClass}
               />
+            </div>
+            <div>
+              <label className={labelClass}>Mã ngành<span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                name="id"
+                value={formData.id}
+                onChange={handleChange}
+                disabled={readOnly}
+                required
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          {/* Row 2: Assigned Users */}
+          <div className={`p-4 rounded-xl border ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/5'}`}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className={`text-sm font-semibold flex items-center gap-2 ${theme === 'light' ? 'text-gray-800' : 'text-white'}`}>
+                <Mail className="h-4 w-4" /> Người phụ trách
+              </h3>
               {!readOnly && (
                 <button
-                type="button"
-                onClick={() => removeUserEmail(index)}
-                className="text-red-400 hover:text-red-300"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+                  type="button"
+                  onClick={addUserEmail}
+                  className="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-1"
+                >
+                  <Plus className="h-3 w-3" /> Thêm
+                </button>
               )}
-              
             </div>
-          ))}
 
+            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+              {userEmails.length === 0 && (
+                <p className="text-xs text-gray-500 italic text-center py-2">Chưa có người phụ trách</p>
+              )}
+              {userEmails.map((email, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => updateUserEmail(index, e.target.value)}
+                    placeholder="example@bitex.com.vn"
+                    disabled={readOnly}
+                    className={inputClass}
+                  />
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => removeUserEmail(index)}
+                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
-
-          
-
-          {/* Description */}
+          {/* Row 3: Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+            <label className={labelClass}>Mô tả</label>
             <textarea
               name="description"
               value={formData.description}
               onChange={handleChange}
               disabled={readOnly}
-
-              placeholder="Enter description"
-              className="w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
-              rows={4}
+              placeholder="Mô tả chi tiết..."
+              className={`${inputClass} resize-none`}
+              rows={3}
             />
           </div>
 
-          {/* Status */}
-          {/* <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
-            <select
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              disabled={readOnly}
-
-              className="w-full px-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white"
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div> */}
-
           {/* Actions */}
-          <div className="flex items-center justify-end space-x-4 pt-4 border-t border-gray-700/50">
+          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-700/10 dark:border-white/10">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 text-gray-400 hover:text-white transition-colors"
+              className={`px-5 py-2.5 rounded-xl font-medium transition-all ${theme === 'light'
+                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                }`}
             >
-              {readOnly ? 'Close':'Cancel'}
-              
+              {readOnly ? 'Đóng' : 'Hủy'}
             </button>
             {!readOnly && (
               <button
-              type="submit"
-              className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300"
-            >
-              {category ? 'Update Category' : 'Create Category'}
-            </button>
+                type="submit"
+                className="px-5 py-2.5 rounded-xl font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2 transform hover:scale-105 active:scale-95"
+              >
+                <Save className="h-4 w-4" />
+                {category ? 'Cập nhật' : 'Tạo mới'}
+              </button>
             )}
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

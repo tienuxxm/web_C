@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Search,
-  Plus,
-  Bell,
-  ChevronDown,
-  Menu,
-  Mail,
-  LogOut,
-  User
-} from 'lucide-react';
+import {Search,Plus,Bell,ChevronDown,Menu,Mail,LogOut,User,Sun,Moon,} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import Swal from '../utils/swal';
@@ -27,7 +19,7 @@ interface HeaderProps {
 
 }
 
-const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar, sidebarCollapsed, onPageChange }) => {
+const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar}) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
 
@@ -35,14 +27,8 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar, sidebarCollapsed
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-
-
   const navigate = useNavigate();
-
-
-  const handleCreateOrder = () => {
-    alert('Create Order functionality would be implemented here');
-  };
+  const { theme, toggleTheme } = useTheme();
 
   const handleLogout = async () => {
     try {
@@ -56,48 +42,9 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar, sidebarCollapsed
     }
 
   };
-  const searchAll = async (query: string) => {
-    try {
-      const [ordersRes, productsRes] = await Promise.all([
-        api.get('/orders/search', { params: { q: query } }),
-        api.get('/products/search', { params: { q: query } }),
-      ]);
+  
 
-      const orders = ordersRes.data.map((item: any) => ({
-        type: 'order',
-        label: item.order_number,
-        id: item.id,
-      }));
-
-      const products = productsRes.data.map((item: any) => ({
-        type: 'product',
-        label: item.name,
-        id: item.id,
-      }));
-
-      const combined = [...orders, ...products];
-      setResults(combined);
-      setShowDropdown(true);
-
-      if (combined.length === 0) toast.error('Không tìm thấy kết quả nào');
-    } catch (error) {
-      console.error('Lỗi tìm kiếm:', error);
-      toast.error('Đã xảy ra lỗi khi tìm kiếm');
-    }
-  };
-
-  useEffect(() => {
-    const delay = setTimeout(() => {
-      if (searchQuery.trim()) {
-        searchAll(searchQuery);
-      } else {
-        setShowDropdown(false);
-        setResults([]);
-      }
-    }, 300);
-
-    return () => clearTimeout(delay);
-  }, [searchQuery]);
+ 
 
   useEffect(() => {
     const handleClickOutside = (e: any) => {
@@ -150,17 +97,13 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar, sidebarCollapsed
       cancelButtonText: 'Hủy bỏ'
     });
 
-    // Nếu user bấm Hủy thì dừng
     if (!result.isConfirmed) return;
 
-    // 2. Hiển thị Loading Toast (để user biết đang chạy)
     const loadingToastId = toast.loading('Đang gửi lệnh gửi mail...');
 
     try {
-      // 3. Gọi API Admin
       const response = await api.post('/admin/send-reminders',{force:true});
 
-      // 4. Thành công
       toast.dismiss(loadingToastId); // Tắt loading
 
       // Hiển thị thông báo thành công bằng Swal
@@ -186,26 +129,16 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar, sidebarCollapsed
       });
     }
   };
-
-
-
-
-
-
-
   return (
-    <header className="h-16 bg-gray-900/80 backdrop-blur-xl border-b border-gray-700/50 flex items-center px-3 sm:px-6 relative z-30">
-      {/* Left Section */}
+    <header className={`h-16 mx-4 mt-2 rounded-xl flex items-center px-6 relative z-30 sticky top-2 shadow-sm transition-colors duration-300 ${
+      theme === 'light' 
+        ? 'bg-white text-bitex-primary border border-gray-200' // White with Navy text for Light Mode
+        : 'glass-panel glass-panel-dark text-gray-100' // Glass for Dark Mode
+    }`}>
       <div className="flex items-center space-x-4">
-        {/* Sidebar Toggle */}
-        <button
-          onClick={onToggleSidebar}
-          className="p-2 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-white transition-all duration-200"
-        >
+        <button onClick={onToggleSidebar} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/20 transition-all active:scale-95 border border-transparent dark:border-white/10">
           <Menu className="h-5 w-5" />
         </button>
-
-        {/* Logo */}
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30">
             <img
@@ -218,131 +151,58 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar, sidebarCollapsed
             <span className="text-lg sm:text-xl font-bold text-white hidden sm:block">Dashboard</span>
           )} */}
         </div>
+        <span className="text-xl font-bold tracking-wide">
+          BitexOrders
+        </span>
       </div>
 
-      {/* Center Section - Search */}
-      <div className="flex-1 max-w-2xl mx-2 sm:mx-8">
-        {/* <div className="relative search-dropdown ">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
-          </div>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all duration-300 text-sm sm:text-base"
-            placeholder="Search..."
-          />
-          {showDropdown && results.length > 0 && (
-            <div className="absolute z-50 mt-2 w-full bg-gray-900 border border-gray-700 rounded-xl shadow-xl max-h-64 overflow-y-auto left-0 right-0">
-              {results.map((item, index) => (
-                <div
-                  key={`${item.type}-${item.id}`}
-                  className="px-4 py-2 text-white hover:bg-gray-700 cursor-pointer text-xs sm:text-sm"
-                  onClick={() => {
-                    if (item.type === 'order') {
-                          onPageChange?.('orders'); // 👈 cập nhật currentPage
+      <div className="flex-1"></div>
 
-                navigate('/dashboard/orders', { state: { searchTerm: item.label } });
-                    } else if (item.type === 'product') {
-                          onPageChange?.('products'); // 👈 cập nhật currentPage
+      <div className="flex items-center space-x-4">
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/20 transition-all hover:rotate-12 border border-transparent dark:border-white/10"
+          aria-label="Toggle Theme"
+        >
+          {theme === 'dark' ? <Sun className="h-5 w-5 text-yellow-300" /> : <Moon className="h-5 w-5 text-bitex-primary" />}
+        </button>
 
-                navigate('/dashboard/products', { state: { searchTerm: item.label } });
-                    }
-                    setShowDropdown(false);
-                    setSearchQuery('');
-                  }}
-                >
-                  <span className="text-blue-400 font-medium">{item.type.toUpperCase()}</span>: {item.label}
-                </div>
-              ))}
-            </div>
-          )}
-
-        </div> */}
-      </div>
-
-      {/* Right Section */}
-      <div className="flex items-center space-x-4 ml-auto">
-        {/* Notifications */}
-        <div className="relative">
-          {/* <button
-            onClick={handleToggleNotifications}
-            className="relative p-2 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-white transition-all duration-200"
-          >
-            <Bell className="h-5 w-5" />
-            {notifications.length > 0 && (
-              <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                {notifications.length}
-              </span>
-            )}
-            
-
-          </button> */}
-
-          {/* Notifications Dropdown */}
-          {/* {showNotifications && (
-            <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-xl shadow-2xl overflow-hidden">
-              <div className="p-4 border-b border-gray-700/50">
-                <h3 className="text-white font-semibold">Notifications</h3>
-              </div>
-              <div className="max-h-64 overflow-y-auto">
-                {notifications.map((notification) => (
-                  <div key={notification.id} className="p-4 border-b border-gray-700/30 hover:bg-gray-700/30 transition-colors">
-                    <div className="flex items-start space-x-3">
-                      <div className={`w-2 h-2 rounded-full mt-2 ${
-                          notification.type.includes('created') ? 'bg-blue-500' :
-                          notification.type.includes('updated') ? 'bg-yellow-500' :
-                            'bg-gray-400'                      
-                            }`}></div>
-                      <div className="flex-1">
-                        <p className="text-gray-300 text-sm">{notification.message}</p>
-                        <p className="text-gray-500 text-xs mt-1">{formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: vi })}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )} */}
-        </div>
-
-        {/* User Profile */}
         <div className="relative">
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className="flex items-center space-x-3 p-2 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 transition-all duration-200"
+            className="flex items-center space-x-3 p-1.5 pr-4 rounded-full hover:bg-gray-100 dark:hover:bg-white/20 transition-all border border-transparent dark:border-white/10"
           >
-            <User className="h-8 w-8 text-white bg-gray-700 rounded-full p-1" />
-
-            <div className="hidden sm:block text-left">
-              <p className="text-white text-sm font-medium">{user.name}</p>
-              <p className="text-gray-400 text-xs capitalize">{user.department}</p>
+            <div className="h-8 w-8 rounded-full bg-gray-100 dark:bg-white p-[2px]">
+               <div className="h-full w-full rounded-full bg-bitex-secondary flex items-center justify-center">
+                 <User className="h-4 w-4 text-white" />
+               </div>
             </div>
-            <ChevronDown className="h-4 w-4 text-gray-400" />
+            <div className="hidden sm:block text-left">
+              <p className="text-sm font-semibold tracking-wide">{user.name}</p>
+            </div>
+            <ChevronDown className="h-4 w-4 opacity-70" />
           </button>
 
-          {/* User Menu Dropdown */}
           {showUserMenu && (
-            <div className="absolute right-0 mt-2 w-40 sm:w-48 bg-gray-800/95 backdrop-blur-xl border border-gray-700/50 rounded-xl shadow-2xl overflow-hidden">
-              <div className="p-2">
-                <hr className="my-2 border-gray-700/50" />
-                <button
+            <div className={`absolute right-0 mt-3 w-48 rounded-xl p-2 z-50 animate-fade-in-up border ${
+              theme === 'light' 
+                ? 'bg-white border-gray-200 shadow-xl text-gray-800' 
+                : 'glass-panel-dark border-white/10 text-white'
+            }`}>
+              <button
                   onClick={handleSendReminders}
                   className="w-full flex items-center space-x-3 px-2 sm:px-3 py-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors text-sm"
                 >
                   <Mail className='h-4 w-4'/>
                   <span>Mail</span>                  
                 </button>
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center space-x-3 px-2 sm:px-3 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors text-sm"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>Logout</span>
-                </button>
-                
-              </div>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center space-x-3 px-3 py-2.5 text-bitex-accent hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm transition-colors font-medium"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Logout</span>
+              </button>
             </div>
           )}
         </div>

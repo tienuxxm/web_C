@@ -12,7 +12,7 @@ import {
   ChevronRight,
   Home
 } from 'lucide-react';
-
+import { useTheme } from '../context/ThemeContext';
 interface SidebarProps {
   collapsed: boolean;
   userRole: string;
@@ -43,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
    console.log('userRole', userRole);
    console.log('userDepartment', userDepartment);
-
+  const { theme } = useTheme();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const menuItems: MenuItem[] = [
@@ -63,17 +63,17 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'orders',
-      label: 'Orders',
+      label: 'Đơn hàng',
       icon: <ShoppingCart className="h-5 w-5" />,
       //badge: 3,
       // department: ['CUNG_UNG','KINH_DOANH','HANH_CHANH','Công nghệ thông tin (IT)','Cung ứng','Hành chính - Miền Nam'],
-      roles: ['truong_phong', 'pho_phong', 'nhan_vien_chinh_thuc','giam_doc','Administrator','Supply','Sales','Leader'],
+      roles: ['Administrator','Supply','Sales','Leader'],
       children: [
-        { id: 'orders-all', label: 'All Orders', icon: <FileText className="h-4 w-4" />, page: 'orders',roles:['Sales','Supply'] },
+        { id: 'orders-all', label: 'Tất cả đơn hàng', icon: <FileText className="h-4 w-4" />, page: 'orders',roles:['Sales','Supply','Administrator'] },
         { id: 'orders-monthly', label: 'Monthly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMonthly',roles:[] },
         { id: 'orders-yearly', label: 'Yearly Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersYearly',roles:[] },
-        { id: 'orders-merged', label: 'Merged Orders', icon: <FileText className="h-4 w-4" />, page: 'ordersMerged' ,roles:['Supply','Leader']},
-        { id: 'orders-completed', label: 'Completed', icon: <FileText className="h-4 w-4" />, page: 'ordersCompleted' },
+        { id: 'orders-merged', label: 'Đơn hàng đã gộp', icon: <FileText className="h-4 w-4" />, page: 'ordersMerged' ,roles:['Supply','Leader','Administrator']},
+        { id: 'orders-completed', label: 'Đơn hàng đã hoàn thành', icon: <FileText className="h-4 w-4" />, page: 'ordersCompleted' },
         { id: 'orders-cancelled', label: 'Cancelled', icon: <FileText className="h-4 w-4" />, page: 'orders',roles: [] },
       ]
     },
@@ -91,11 +91,11 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'products',
-      label: 'Products',
+      label: 'Sản phẩm',
       icon: <Package className="h-5 w-5" />,
       children: [
-        { id: 'products-all', label: 'All Products', icon: <Package className="h-4 w-4" />, page: 'products' },
-        { id: 'products-categories', label: 'Categories', icon: <Package className="h-4 w-4" />, page: 'productsCategories' },
+        { id: 'products-all', label: 'Tất cả sản phẩm', icon: <Package className="h-4 w-4" />, page: 'products' },
+        { id: 'products-categories', label: 'Ngành hàng', icon: <Package className="h-4 w-4" />, page: 'productsCategories' },
         { id: 'products-inventory', label: 'Inventory', icon: <Package className="h-4 w-4" />, page: 'products',roles: [] },
       ]
     },
@@ -160,47 +160,70 @@ const Sidebar: React.FC<SidebarProps> = ({
     const isExpanded = expandedItems.includes(item.id);
     const hasChildren = item.children && item.children.length > 0;
     const isActive = item.page === currentPage;
+    const isLight = theme === 'light'; // Biến kiểm tra theme
+
+   // 1. Base Styles (Bo tròn, transition mượt)
+    const baseClasses = `w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-300 group relative overflow-hidden ${
+      level > 0 ? 'ml-4 text-sm mt-1' : 'mb-1'
+    }`;
+
+    // 2. State Classes (Màu sắc theo Theme & Active)
+    let stateClasses = '';
+    if (isActive) {
+      if (isLight) {
+        stateClasses = 'bg-bitex-secondary text-white font-semibold shadow-inner border border-white/10'; // Light: Xanh đậm + Chữ trắng
+      } else {
+        stateClasses = 'bg-white/10 text-blue-300 font-semibold shadow-sm border border-white/5'; // Dark: Kính sáng + Chữ xanh neon
+      }
+    } else {
+      if (isLight) {
+        stateClasses = 'text-blue-100 hover:bg-white/10 hover:text-white'; // Light: Chữ xanh nhạt -> Trắng khi hover
+      } else {
+        stateClasses = 'text-gray-400 hover:bg-white/5 hover:text-gray-200'; // Dark: Chữ xám -> Sáng khi hover
+      }
+    }
+
+    // 3. Content của nút bấm
+    const content = (
+      <div className={`${baseClasses} ${stateClasses}`}>
+        {/* Background active overlay hiệu ứng */}
+        {isActive && <div className="absolute inset-0 bg-white/5 animate-pulse rounded-xl" />}
+        
+        <div className="flex items-center space-x-3 relative z-10">
+          {/* Icon Scale Effect */}
+          <div className={`flex-shrink-0 transition-transform duration-300 ${isActive ? 'scale-110' : ''}`}>
+            {item.icon}
+          </div>
+          {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
+        </div>
+
+        {/* Chevron & Badge */}
+        {!collapsed && (
+          <div className="flex items-center space-x-2 relative z-10">
+            {item.badge && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full shadow-sm">
+                {item.badge}
+              </span>
+            )}
+            {hasChildren && (
+              <div className={`opacity-70 group-hover:opacity-100 transition-opacity`}>
+                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
 
     return (
       <div key={item.id}>
-        <button
-          onClick={() => handleItemClick(item)}
-          className={`w-full flex items-center justify-between px-3 py-2 text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-all duration-200 group ${
-            level > 0 ? 'ml-4 text-sm' : ''
-          } ${isActive ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : ''}`}
-        >
-          <div className="flex items-center space-x-3">
-            <div className="flex-shrink-0">
-              {item.icon}
-            </div>
-            {!collapsed && (
-              <span className="flex-1 text-left">{item.label}</span>
-            )}
-          </div>
-          
-          {!collapsed && (
-            <div className="flex items-center space-x-2">
-              {item.badge && (
-                <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                  {item.badge}
-                </span>
-              )}
-              {hasChildren && (
-                <div className="text-gray-400 group-hover:text-white transition-colors">
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+        <button onClick={() => handleItemClick(item)} className="w-full text-left">
+          {content}
         </button>
-
-        {/* Submenu */}
+        
+        {/* Submenu với Animation fade-in-up */}
         {hasChildren && isExpanded && !collapsed && (
-          <div className="mt-1 space-y-1">
+          <div className="mt-1 space-y-1 animate-fade-in-up">
             {item.children?.map(child => renderMenuItem(child, level + 1))}
           </div>
         )}
@@ -208,18 +231,23 @@ const Sidebar: React.FC<SidebarProps> = ({
     );
   };
 
+  // --- RETURN CHÍNH (SIDEBAR CONTAINER) ---
   return (
-    <aside className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-gray-900/80 backdrop-blur-xl border-r border-gray-700/50 transition-all duration-300 z-20 ${
+    <aside className={`fixed left-4 top-20 h-[calc(100vh-6rem)] rounded-2xl transition-all duration-300 z-20 shadow-xl border ${
+      theme === 'light' 
+        ? 'bg-bitex-primary border-white/10' // Light: Màu Xanh Navy đặc trưng
+        : 'glass-panel glass-panel-dark border-white/10' // Dark: Hiệu ứng kính
+    } ${
       isMobile 
         ? collapsed 
-          ? '-translate-x-full w-64' 
+          ? '-translate-x-[150%] w-64' 
           : 'translate-x-0 w-64'
         : collapsed 
-          ? 'w-16' 
+          ? 'w-20' 
           : 'w-64'
     }`}>
-      <div className="p-4 h-full overflow-y-auto">
-        <nav className="space-y-2">
+      <div className="p-4 h-full overflow-y-auto custom-scrollbar">
+        <nav className="space-y-1">
           {menuItems.map(item => renderMenuItem(item))}
         </nav>
       </div>
@@ -227,8 +255,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile overlay */}
       {isMobile && !collapsed && (
         <div 
-          className="fixed inset-0 bg-black/50 z-[-1]"
-          onClick={() => onPageChange(currentPage)} // This will trigger sidebar close
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[-1] rounded-2xl"
+          onClick={() => onPageChange(currentPage)} 
         />
       )}
     </aside>
