@@ -35,7 +35,7 @@ class OrderController extends Controller
     use AuthorizesRequests;
     public function __construct()
     {
-        $this->middleware('auth:api'); // Middleware bảo vệ bằng JWT
+        $this->middleware('auth:api');
     }
 
     // POST /api/orders
@@ -75,21 +75,19 @@ class OrderController extends Controller
                 'Industry'     => $request->industry_id,
                 'IntendedUse'  => $request->intended_use,
                 'Supplier'     => $request->supplier_name,
-                'Status'       => 1, 
+                'Status'       => 1,
                 'Note'         => $request->notes ?? '',
                 'CreatedBy'    => $user->code,
                 'CreatedDate'  => now(),
             ]);
             // 4. Insert Items
             foreach ($request->items as $index => $itemData) {
-                $inputQty = (float)$itemData['quantity'];
-                $quantity    = $inputQty; 
+                $inputQty = (float)$itemData['quantity_old'];
+                $quantity    = $inputQty;
                 $quantityOld = $inputQty;
                 $cleanCode = $itemData['productCode'];
-                // Logic Variant
                 $isIndustry18 = ($request->industry_id == 18);
                 $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
-                // Logic lấy Product Name/Price
                 $prod = Product::where('code', $cleanCode)->first();
                 if ($prod) {
                     $itemName = $prod->name;
@@ -97,7 +95,7 @@ class OrderController extends Controller
                     $unit     = $prod->unit;
                     if (empty($variant)) $variant = $prod->color;
                 } else {
-                    $itemName = $itemData['productName'] ?? 'N/A';
+                    $itemName = $itemData['productName'];
                     $price    = isset($itemData['price']) ? (float)$itemData['price'] : 0;
                     $unit     = 'CAI';
                 }
@@ -110,7 +108,7 @@ class OrderController extends Controller
                     'Variant'     => $variant,
                     'ItemName'    => $itemName,
                     'Unit'        => $unit,
-                    'Quantity'    => $quantity,     // Số chốt tạm thời
+                    'Quantity'    => $quantity,
                     'QuantityOld' => $quantityOld,
                     'Price'       => $price,
                     'Status'      => 1,
@@ -169,6 +167,7 @@ class OrderController extends Controller
             'IntendedUse'  => $request->intended_use,
             'Status'       => $inputStatus,
             'Note'         => $request->notes ?? $order->Note,
+
             // Luôn cập nhật người sửa cuối cùng (bất kể role nào)
             'ModifiedBy'   => $userCode,
             'ModifiedDate' => $now,
@@ -201,13 +200,14 @@ class OrderController extends Controller
                     foreach ($request->items as $index => $itemData) {
                         $cleanCode = $itemData['productCode'];
                         $quantity  = (float)$itemData['quantity'];
+                        $quantityOld = (float)$itemData['quantity_old'];
+                        $price     = (float)$itemData['price'];
                         // Variant Logic
                         $isIndustry18 = ($order->Industry == 18);
                         $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
                         $prod = Product::where('code', $cleanCode)->first();
                         if ($prod) {
                             $itemName = $prod->name;
-                            $price    = $prod->price;
                             $unit     = $prod->unit;
                             if (empty($variant)) $variant = $prod->color;
                         } else {
@@ -224,9 +224,11 @@ class OrderController extends Controller
                             'ItemName'    => $itemName,
                             'Unit'        => $unit,
                             'Quantity'    => $quantity,
-            
+                            'QuantityOld' => $quantityOld,
                             'Price'       => $price,
-                            'Status'      => $inputStatus,                        
+                            'Status'      => $inputStatus,
+                            'CreatedBy'   => $order->CreatedBy,   // Lấy lại người tạo của đơn hàng gốc
+                            'CreatedDate' => $order->CreatedDate,
                             'ModifiedBy'   => $userCode,
                             'ModifiedDate' => $now,
                         ]);
@@ -235,7 +237,9 @@ class OrderController extends Controller
             }
 
             DB::connection('sqlsrv')->commit();
-            return response()->json(['message' => 'Cập nhật thành công']);
+            return response()->json([
+                'message' => 'Cập nhật thành công',
+            ]);
         } catch (\Exception $e) {
             DB::connection('sqlsrv')->rollBack();
             return response()->json(['message' => 'Lỗi cập nhật: ' . $e->getMessage()], 500);
@@ -446,7 +450,6 @@ class OrderController extends Controller
             $subtotal = $order->items->sum(function ($item) {
                 return $item->Quantity * $item->Price;
             });
-            $totalAmount = $subtotal;
             $formattedOrder = [
                 'id' => $order->ID,
                 'order_number' => $order->DocumentNo,
@@ -464,6 +467,7 @@ class OrderController extends Controller
                     $uniqueProductId = $item->ItemCode . ($item->Variant ? '-' . $item->Variant : '');
                     $catId = $item->product ? $item->product->category_id : null;
                     if (!$catId) $catId = $order->Industry;
+                    $erpPrice = $item->product ? (float)$item->product->price : 0;
                     return [
                         'id' => $item->ID,
                         'product_code' => $item->ItemCode,
@@ -471,6 +475,8 @@ class OrderController extends Controller
                         'quantity' => (float)$item->Quantity,
                         'quantity_old' => (float)$item->QuantityOld,
                         'unit_price' => (float)$item->Price,
+                        'erp_price' => $erpPrice,
+
                         'unit' => $item->Unit,
                         'total' => (float)($item->Quantity * $item->Price),
                         'product' => [
@@ -494,151 +500,204 @@ class OrderController extends Controller
             return response()->json(['message' => 'Lỗi tải chi tiết đơn hàng', 'error' => $e->getMessage()], 500);
         }
     }
+
+    public function checkMergeAvailability(Request $request)
+    {
+        $orderIds = $request->input('order_ids', []);
+        if (empty($orderIds)) return response()->json([]);
+
+        // 1. Lấy thông tin các đơn PO được chọn
+        $orders = Order::whereIn('DocumentNo', $orderIds)->get();
+
+        if ($orders->isEmpty()) return response()->json([]);
+
+        $firstOrder = $orders->first();
+        $supplier = $firstOrder->Supplier;
+        $industry = $firstOrder->Industry;
+        $existingMerges = MergeOrder::where('Status', 8) 
+            ->where('Industry', $industry)
+            ->whereHas('originalOrderItems.order', function ($q) use ($supplier) {
+                $q->where('Supplier', $supplier);
+            })
+            ->withCount('items') 
+            ->orderBy('CreatedDate', 'desc')
+            ->get(['DocumentNo', 'PostingDate', 'Note', 'CreatedDate']);
+
+
+        // Trả về danh sách để FE hiển thị
+        return response()->json([
+            'valid' => true,
+            'supplier' => $supplier,
+            'industry' => $industry,
+            'existing_merges' => $existingMerges
+        ]);
+    }
+
     public function merge(Request $request)
     {
         $user = JWTAuth::user();
         $orderIds = $request->input('order_ids', []);
+        $targetMergeId = $request->input('target_merge_id'); // ID đơn gộp cũ (nếu chọn)
 
-        if (empty($orderIds)) {
-            return response()->json(['message' => 'Chưa chọn đơn hàng nào'], 422);
-        }
+        if (empty($orderIds)) return response()->json(['message' => 'Chưa chọn đơn hàng'], 422);
 
-        // 1. Query theo TYPE_CHOT (7)
         $orders = Order::with('items')
             ->whereIn('DocumentNo', $orderIds)
             ->where('Status', OrderStatus::TYPE_CHOT)
             ->get();
 
-        if ($orders->count() === 0) {
-            return response()->json(['message' => 'Không có đơn hàng hợp lệ (Phải là status Chốt).'], 422);
-        }
-
-        if ($orders->pluck('Supplier')->unique()->count() > 1) {
-            return response()->json(['message' => 'Các đơn hàng được chọn KHÔNG cùng Nhà Cung Cấp.'], 422);
-        }
-        if ($orders->pluck('Industry')->unique()->count() > 1) {
-            return response()->json(['message' => 'Các đơn hàng được chọn KHÔNG cùng Ngành hàng.'], 422);
-        }
-
-        // --- XỬ LÝ GHI CHÚ TỪ CÁC ĐƠN LẺ ---
-        // Lấy Note, xóa khoảng trắng thừa, loại bỏ null/rỗng, nối lại bằng dấu chấm phẩy
-        $notesFromOrders = $orders->pluck('Note')
-            ->map(function ($note) {
-                return trim((string)$note);
-            })
-            ->filter(function ($note) {
-                return !empty($note);
-            })
-            ->implode('; ');
-
-        // Tạo nội dung ghi chú cuối cùng: Vừa có danh sách ID, vừa có nội dung ghi chú
-        $finalNote = "Gộp từ: " . implode(', ', $orderIds);
-        if (!empty($notesFromOrders)) {
-            $finalNote .= ". Chi tiết: " . $notesFromOrders;
-        }
-        // ------------------------------------
-
-        // 2. Gom nhóm items (Giữ nguyên logic cũ)
-        $mergedItems = [];
-        $allSourceIds = [];
-
-        foreach ($orders as $order) {
-            foreach ($order->items as $item) {
-                $key = $item->ItemCode . '_' . ($item->Variant ?? '');
-
-                if (!isset($mergedItems[$key])) {
-                    $mergedItems[$key] = [
-                        'ItemCode' => $item->ItemCode,
-                        'Variant'  => $item->Variant,
-                        'ItemName' => $item->ItemName,
-                        'Unit'     => $item->Unit,
-                        'Price'    => $item->Price,
-                        'Quantity' => 0,
-                        'IDs'      => []
-                    ];
-                }
-                $mergedItems[$key]['Quantity'] += $item->Quantity;
-
-                if ($item->ID) {
-                    $mergedItems[$key]['IDs'][] = $item->ID;
-                    $allSourceIds[] = $item->ID;
-                }
-            }
-        }
+        if ($orders->count() === 0) return response()->json(['message' => 'Không có đơn hàng hợp lệ.'], 422);
 
         DB::connection('sqlsrv')->beginTransaction();
         try {
-            // 3. Tạo Header Merge
-            $prefix = 'MP' . date('ym');
-            $lastMerge = MergeOrder::where('DocumentNo', 'like', $prefix . '%')
-                ->orderBy('DocumentNo', 'desc')
-                ->lockForUpdate()
-                ->first();
-            $nextNum = $lastMerge ? intval(substr($lastMerge->DocumentNo, -4)) + 1 : 1;
-            $newDocumentNo = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
-
-            MergeOrder::create([
-                'DocumentNo'   => $newDocumentNo,
-                'PostingDate'  => $orders->orderNumber,
-                'ShipmentDate' => $orders->orderShipmentDate,
-                'Industry'     => $orders->first()->Industry,
-                'Status'       => OrderStatus::TYPE_MERGE, // 8
-
-                // ✅ SỬA LẠI: Dùng biến $finalNote đã xử lý ở trên
-                'Note'         => $finalNote,
-
-                'CreatedBy'    => $user->code,
-                'CreatedDate'  => now(),
-            ]);
-
-            // 4. Tạo Line Merge (Giữ nguyên)
-            $lineNum = 1;
-            foreach ($mergedItems as $mItem) {
-                $sourceIdsStr = implode('-', $mItem['IDs']);
-
-                MergeOrderItem::create([
-                    'DocumentNo'     => $newDocumentNo,
-                    'Line'           => $lineNum,
-                    'PostingDate'    => now(),
-                    'ItemCode'       => $mItem['ItemCode'],
-                    'Variant'        => $mItem['Variant'],
-                    'ItemName'       => $mItem['ItemName'],
-                    'Unit'           => $mItem['Unit'],
-                    'Quantity'       => $mItem['Quantity'],
-                    'QuantityOld'    => $mItem['Quantity'],
-                    'Price'          => $mItem['Price'],
-                    'Status'         => OrderStatus::TYPE_MERGE,
-                    'PurchaseLineID' => $sourceIdsStr,
-                    'CreatedBy'      => $user->code,
-                    'CreatedDate'    => now(),
-                ]);
-                $lineNum++;
+           
+            $timestamps = $orders->map(function ($o) {
+                return \Carbon\Carbon::parse($o->ShipmentDate)->timestamp;
+            })->toArray();
+            $targetMergeOrder = null;
+            if ($targetMergeId) {
+                $targetMergeOrder = MergeOrder::with('items')->where('DocumentNo', $targetMergeId)->firstOrFail();
+                if ($targetMergeOrder->Status != 8) {
+                    throw new \Exception("Đơn gộp $targetMergeId không còn ở trạng thái Nháp.");
+                }
+                $timestamps[] = \Carbon\Carbon::parse($targetMergeOrder->ShipmentDate)->timestamp;
             }
 
-            // 5. Cập nhật Purchase Line
-            if (!empty($allSourceIds)) {
-                \App\Models\OrderItem::whereIn('ID', $allSourceIds)->update([
-                    'MergeHeaderID' => $newDocumentNo,
+            // 3. Tính trung bình cộng
+            $avgTimestamp = array_sum($timestamps) / count($timestamps);
+            $avgShipmentDate = \Carbon\Carbon::createFromTimestamp($avgTimestamp);
+
+            // Xử lý Note
+            $notesFromOrders = $orders->pluck('Note')->filter()->implode('; ');
+
+            $mergeOrder = null;
+
+            if ($targetMergeOrder) {
+                // A. TRƯỜNG HỢP GỘP VÀO ĐƠN CŨ
+                $mergeOrder = $targetMergeOrder;
+
+                // Cập nhật Header
+                $mergeOrder->update([
+                    'ShipmentDate' => $avgShipmentDate, // Cập nhật ngày trung bình mới
+                    'Note'         => $mergeOrder->Note . " | Gộp thêm: " . implode(', ', $orderIds) . ". " . $notesFromOrders,
+                    'ModifiedBy'   => $user->code,
+                    'ModifiedDate' => now(),
+                ]);
+            } else {
+                // B. TRƯỜNG HỢP TẠO MỚI (Code cũ của bạn)
+                $prefix = 'MP' . date('ym');
+                $lastMerge = MergeOrder::where('DocumentNo', 'like', $prefix . '%')
+                    ->orderBy('DocumentNo', 'desc')->lockForUpdate()->first();
+                $nextNum = $lastMerge ? intval(substr($lastMerge->DocumentNo, -4)) + 1 : 1;
+                $newDocumentNo = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+
+                $finalNote = "Gộp từ: " . implode(', ', $orderIds) . ". " . $notesFromOrders;
+
+                $mergeOrder = MergeOrder::create([
+                    'DocumentNo'   => $newDocumentNo,
+                    'PostingDate'  => now(),
+                    'ShipmentDate' => $avgShipmentDate, // Ngày trung bình
+                    'Industry'     => $orders->first()->Industry,
+                    'Status'       => OrderStatus::TYPE_MERGE, // 8
+                    'Note'         => $finalNote,
+                    'CreatedBy'    => $user->code,
+                    'CreatedDate'  => now(),
+                ]);
+            }
+
+            // --- XỬ LÝ ITEMS (QUAN TRỌNG: CỘNG DỒN) ---
+            // Gom nhóm items từ các PO mới
+            $newItemsDict = [];
+            foreach ($orders as $order) {
+                foreach ($order->items as $item) {
+                    $key = $item->ItemCode . '_' . ($item->Variant ?? '');
+                    if (!isset($newItemsDict[$key])) {
+                        $newItemsDict[$key] = [
+                            'obj' => $item, // Giữ object để lấy thông tin name, unit...
+                            'qty' => 0,
+                            'qty_old' => 0,
+                            'ids' => []
+                        ];
+                    }
+                    $newItemsDict[$key]['qty'] += $item->Quantity;
+                    $newItemsDict[$key]['qty_old'] += $item->QuantityOld;
+                    $newItemsDict[$key]['ids'][] = $item->ID;
+                }
+            }
+
+            // Duyệt qua danh sách items mới gom được để Insert hoặc Update vào đơn Merge
+            foreach ($newItemsDict as $key => $data) {
+                $itemSample = $data['obj'];
+                $newQty     = $data['qty'];
+                $newQtyOld  = $data['qty_old'];
+                $newIdsStr  = implode('-', $data['ids']);
+
+                // Tìm xem trong đơn Merge đã có sản phẩm này chưa
+                $existingLine = MergeOrderItem::where('DocumentNo', $mergeOrder->DocumentNo)
+                    ->where('ItemCode', $itemSample->ItemCode)
+                    ->where('Variant', $itemSample->Variant ?? '') // Cần xử lý null variant cẩn thận
+                    ->first();
+
+                if ($existingLine) {
+                    // UPDATE: Cộng dồn số lượng và nối chuỗi ID
+                    $existingLine->update([
+                        'Quantity'       => $existingLine->Quantity + $newQty,
+                        'QuantityOld'    => $existingLine->QuantityOld + $newQtyOld,
+                        'PurchaseLineID' => $existingLine->PurchaseLineID . '-' . $newIdsStr, // Nối thêm ID mới
+                        'ModifiedBy'     => $user->code,
+                        'ModifiedDate'   => now()
+                    ]);
+                } else {
+                    // INSERT: Tạo dòng mới (Lấy Line number tiếp theo)
+                    $maxLine = MergeOrderItem::where('DocumentNo', $mergeOrder->DocumentNo)->max('Line') ?? 0;
+
+                    MergeOrderItem::create([
+                        'DocumentNo'     => $mergeOrder->DocumentNo,
+                        'Line'           => $maxLine + 1,
+                        'PostingDate'    => now(),
+                        'ItemCode'       => $itemSample->ItemCode,
+                        'Variant'        => $itemSample->Variant,
+                        'ItemName'       => $itemSample->ItemName,
+                        'Unit'           => $itemSample->Unit,
+                        'Quantity'       => $newQty,
+                        'QuantityOld'    => $newQtyOld,
+                        'Price'          => $itemSample->Price,
+                        'Status'         => 8,
+                        'PurchaseLineID' => $newIdsStr,
+                        'CreatedBy'      => $user->code,
+                        'CreatedDate'    => now(),
+                    ]);
+                }
+            }
+
+            // Cập nhật trạng thái các PO con
+            Order::whereIn('DocumentNo', $orderIds)->update(['Status' => OrderStatus::TYPE_MERGE]);
+
+            // Cập nhật trạng thái các dòng PO con (để biết nó thuộc MergeHeader nào)
+            $allNewSourceIds = [];
+            foreach ($newItemsDict as $d) $allNewSourceIds = array_merge($allNewSourceIds, $d['ids']);
+
+            if (!empty($allNewSourceIds)) {
+                \App\Models\OrderItem::whereIn('ID', $allNewSourceIds)->update([
+                    'MergeHeaderID' => $mergeOrder->DocumentNo,
                     'Status'        => OrderStatus::TYPE_MERGE
                 ]);
             }
-
-            // 6. Cập nhật Order gốc
-            Order::whereIn('DocumentNo', $orderIds)
-                ->update(['Status' => OrderStatus::TYPE_MERGE]);
 
             DB::connection('sqlsrv')->commit();
 
             return response()->json([
                 'message' => 'Gộp đơn thành công',
-                'merge_order_id' => $newDocumentNo
+                'merge_order_id' => $mergeOrder->DocumentNo
             ]);
         } catch (\Exception $e) {
             DB::connection('sqlsrv')->rollBack();
             return response()->json(['message' => 'Lỗi: ' . $e->getMessage()], 500);
         }
     }
-    // GET /api/orders/ids
+
+
+
     public function getAllIds(Request $request)
     {
         $status = $request->query('status'); // Lấy tham số status từ URL
@@ -989,4 +1048,6 @@ class OrderController extends Controller
             'output' => $output
         ], 200);
     }
+    // GET /api/orders/check-merge
+
 }

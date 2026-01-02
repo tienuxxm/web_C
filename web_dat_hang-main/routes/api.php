@@ -19,7 +19,6 @@ Route::get('departments', [DepartmentController::class, 'department']);
 Route::post('login',    [AuthController::class, 'login']);
 Route::middleware('auth:api')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
-    Route::apiResource('reports', ReportController::class); 
     /* Categories */
     Route::apiResource('categories', CategoryController::class)->only(['index', 'store']);
     Route::put('/categories/{category}', [CategoryController::class, 'update']);
@@ -46,6 +45,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('/',       'store');
         Route::match(['put', 'patch'], '{order}', 'update');
         Route::delete('{order}', 'destroy');
+        Route::post('check-merge', 'checkMergeAvailability');
         Route::get('ids',  'getAllIds');
         Route::get('{order}',  'show');
         Route::post('split', 'split');
@@ -54,6 +54,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('merge-orders/stats', [MergeOrderController::class, 'stats']);
     Route::get('/merge-orders/{id}', [MergeOrderController::class, 'show']);
     Route::put('merge-orders/{id}', [MergeOrderController::class, 'update']);
+    Route::get('/merge-orders/items/{id}/distribution', [MergeOrderController::class, 'getDistribution']);
     Route::get('merge-orders', [MergeOrderController::class, 'index']);
     Route::post('/export-merged-orders-multi-months', [ExportController::class, 'exportMergedOrdersMultipleMonths']);
     Route::post('/export-merged-orders-multi-years', [ExportController::class, 'exportMergedOrdersMultipleYears']);

@@ -26,4 +26,9 @@ class MergeOrderItem extends Model
         // 'ID' là khóa chính của OrderItem (API$Purchase Line)
         return $this->belongsTo(\App\Models\OrderItem::class, 'PurchaseLineID', 'ID');
     }
+    public function product()
+    {
+        // Liên kết với bảng Product qua ItemCode (giả sử Product dùng cột Code làm khóa chính)
+        return $this->belongsTo(Product::class, 'ItemCode', 'Code');
+    }
 }

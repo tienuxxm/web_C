@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
   Search, Edit, Trash2, Folder, Eye, RotateCcw,
   Plus, CheckCircle, XCircle, Layers, Users, Hash
-} from 'lucide-react'; import CategoryModal from './CategoryModal';
+} from 'lucide-react'; 
+import CategoryModal from './CategoryModal';
 import api from '../../services/api';
 import { useEffect } from 'react';
 import toast from 'react-hot-toast';
@@ -213,7 +214,7 @@ const CategoriesPage: React.FC = () => {
                theme === 'light' ? 'bg-gray-50 text-gray-600 border-b border-gray-200' : 'bg-white/5 text-gray-400 border-b border-white/5'
             }`}>
               <tr>
-                <th className="p-4 w-20">ID</th>
+                <th className="p-4 w-20">Mã ngành</th>
                 <th className="p-4">Tên ngành</th>
                 <th className="p-4 hidden sm:table-cell">Mô tả</th>
                 <th className="p-4 text-center">Nhân sự</th>

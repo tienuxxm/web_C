@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, ShoppingBag,Save} from 'lucide-react';
+import { X, Plus, Trash2, ShoppingBag, Save,  List } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { getCurrentUser } from '../../utils/auth';
 import MySwal from '../../utils/swal';
 import { useTheme } from '../../context/ThemeContext';
 import { createPortal } from 'react-dom';
+import DistributionModal from './DistributionModal';
 
 interface OrderItem {
   id?: string | number;
@@ -13,8 +14,9 @@ interface OrderItem {
   productCode: string;
   productName: string;
   quantity: number;
-  quantityOld:number;
+  quantityOld: number;
   price: number;
+  erpPrice: number;
   color: string;
 }
 interface StatusOption {
@@ -38,11 +40,10 @@ export interface OrderPayload {
   intended_use: string;
   industry_id: number | string;
   supplier_name: string;
-  items: { productCode: string; quantity: number,quantityOld:number, variant: string ,productName :string,price:number}[];
+  items: { productCode: string; quantity: number, quantity_old: number, variant: string, productName: string, price: number }[];
   status: number;
   status_name: string;
   estimated_delivery: string;
-  shipping: number;
   notes: string;
 }
 
@@ -51,8 +52,6 @@ export interface OrderFromAPI {
   orderNumber: string;
   supplierName?: string;
   subtotal: number;
-  tax: number;
-  shipping: number;
   total: number;
   status: number;
   status_name: string;
@@ -72,7 +71,7 @@ export interface OrderFromAPI {
       color: string;
     };
     quantity: number;
-    quantityOld:number;
+    quantityOld: number;
     price: number;
     variant: string;
   }[];
@@ -89,14 +88,13 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const [inspectItemId, setInspectItemId] = useState<number | null>(null);
   const { theme } = useTheme();
   const [formData, setFormData] = useState({
     orderNumber: '',
     supplier_name: '',
     items: [] as OrderItem[],
     subtotal: 0,
-    tax: 0,
-    shipping: 0,
     total: 0,
     status: 1,
     statusName: '',
@@ -136,15 +134,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   useEffect(() => {
     if (readOnly) return;
     const fetchProducts = async () => {
-      // Nếu chưa chọn danh mục thì không tải gì cả (để nhẹ máy)
       if (!selectedCategoryId) {
         setProducts([]);
         return;
       }
-
       setLoadingProducts(true);
       try {
-        // ✅ GỌI API LỌC THEO CATEGORY (Thêm tham số category_id)
         const res = await api.get(`/products?per_page=2000&status=active&category_id=${selectedCategoryId}`);
         let availableProducts = res.data.products || [];
 
@@ -167,7 +162,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
             availableProducts = [...missingProducts, ...availableProducts];
           }
         }
-
         setProducts(availableProducts);
       } catch (e) {
         console.error('❌ Failed to load products', e);
@@ -179,37 +173,29 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
     fetchProducts();
   }, [order, readOnly, selectedCategoryId]);
-
-  // Thay thế đoạn useEffect map data trong OrderModal.tsx
-
   useEffect(() => {
     if (order) {
-
       const detectedCategory = order.industry_id
         ? String(order.industry_id)
         : (order.items.length > 0 ? String(order.items[0].product.categoryId) : '');
-
       setSelectedCategoryId(detectedCategory || '');
-
       setFormData({
         orderNumber: order.orderNumber,
         supplier_name: order.supplierName ?? '',
-
         items: order.items.map((it: any) => {
           return {
-            id: it.id, 
+            id: it.id,
             productId: it.product.id,
             productCode: it.product.code,
             productName: it.product.name,
             quantity: it.quantity,
-            quantityOld:it.quantityOld,
-            price: it.product.price,
+            quantityOld: it.quantityOld,
+            price: it.price,
+            erpPrice: it.erpPrice,
             color: it.product.color
           };
         }),
         subtotal: order.subtotal,
-        tax: order.tax,
-        shipping: order.shipping,
         total: order.total,
         status: Number(order.status),
         statusName: order.status_name,
@@ -227,8 +213,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         supplier_name: '',
         items: [],
         subtotal: 0,
-        tax: 0,
-        shipping: 0,
         total: 0,
         status: 1,
         statusName: '',
@@ -239,8 +223,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       });
     }
   }, [order]);
-
-
   useEffect(() => {
     const subtotal = formData.items.reduce(
       (sum, item) => sum + (Number(item.quantity) * Number(item.price)), 0
@@ -276,20 +258,18 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       industry_id: selectedCategoryId,
       orderDate: formData.orderDate,
       intended_use: formData.intendedUse,
-      supplier_name: formData.supplier_name, // Đổi từ supplierName sang supplier_name
+      supplier_name: formData.supplier_name,
       items: formData.items.map(it => ({
-        variant: it.color || '',
+        variant: it.color,
         productCode: it.productCode || it.productId,
-        productName:it.productName,
+        productName: it.productName,
         quantity: it.quantity,
-        quantityOld:it.quantityOld,
-        price:it.price
-        
+        quantity_old: it.quantityOld,
+        price: it.price,
       })),
       status_name: formData.statusName,
-      status: formData.status, // Mặc định là 'draft' nếu không có
+      status: formData.status,
       estimated_delivery: formData.estimatedDelivery,
-      shipping: formData.shipping,
       notes: formData.notes
     };
     onSave(payload);
@@ -305,27 +285,24 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   };
 
   const addItem = () => {
-    // Logic sinh mã cho ngành 18
     let nextCode = '';
     const isManual = String(selectedCategoryId) === '18';
 
     if (isManual) {
-      // Lấy index tiếp theo dựa trên số lượng item hiện có
       const nextIndex = formData.items.length + 1;
-      // Format: 18 + 0000 + 0001 (4 số đuôi)
       nextCode = `180000${String(nextIndex).padStart(4, '0')}`;
     }
 
     const newItem: OrderItem = {
-      productId: isManual ? `MANUAL_${Date.now()}` : '', // ID giả để React làm key
+      productId: isManual ? `MANUAL_${Date.now()}` : '',
       productCode: nextCode,
       productName: '',
-      quantity: 1,
-      quantityOld:1,
+      quantity: 0,
+      quantityOld: 1,
       price: 0,
+      erpPrice: 0,
       color: isManual ? '000' : '', // Mặc định màu 000
-      // Thêm unit nếu cần
-      // unit: 'Cái' 
+   
     };
 
     setFormData(prev => ({
@@ -348,14 +325,14 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         html: `
                 <div class="text-left text-sm">
                     <p class="mb-2">Bạn đang xóa sản phẩm: <span class="font-bold text-yellow-400">${itemToRemove.productName}</span></p>
-                    <p>Hệ thống sẽ <b>TỰ ĐỘNG TÁCH</b> dòng này sang một đơn gộp mới (Nháp) để xử lý sau thay vì xóa vĩnh viễn.</p>
+                    <p>Hệ thống sẽ <b>TỰ ĐỘNG TÁCH</b> dòng này sang một đơn gộp mới  để xử lý sau .</p>
                 </div>
             `,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Đồng ý, Tách ngay',
         cancelButtonText: 'Hủy bỏ',
-        reverseButtons: true 
+        reverseButtons: true
       });
       if (result.isConfirmed) {
         try {
@@ -398,7 +375,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
           });
         }
       }
-      return; 
+      return;
     }
     setFormData(prev => ({
       ...prev,
@@ -411,24 +388,39 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       ...prev,
       items: prev.items.map((item, i) => {
         if (i === index) {
+          // 1. Logic chọn sản phẩm (Giữ nguyên)
           if (field === 'productId') {
             const product = products.find(p => p.id === value);
+            // Khi chọn SP mới, gán mặc định quantity = 1 (hoặc 0 tùy logic của bạn)
             return {
               ...item,
               productId: value as string,
               productCode: product?.code || '',
               productName: product?.name || '',
               price: product?.price || 0,
-              color: product?.color || ''
+              erpPrice: product?.price || 0,
+              color: product?.color || '',
+              quantity: 1,    // Reset SL Duyệt
+              quantityOld: 1  // Reset SL Yêu cầu
             };
           }
+
+          // 2. LOGIC MỚI: Đồng bộ SL Yêu cầu -> SL Duyệt
+          if (field === 'quantityOld') {
+             return {
+                ...item,
+                quantityOld: value as number, // Cập nhật cái đang nhập
+                quantity: value as number     // Tự động copy sang SL Duyệt
+             };
+          }
+
+          // 3. Các trường khác cập nhật bình thường
           return { ...item, [field]: value };
         }
         return item;
       })
     }));
-
-  };
+};
   useEffect(() => {
     if (products.length === 0 || formData.items.length === 0) return;
 
@@ -442,15 +434,14 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     if (role === 'Administrator') {
       return allStatuses;
     }
-    let allowedTypes: number[] = [currentStatus]; 
+    let allowedTypes: number[] = [currentStatus];
     if (role === 'Sales') {
       if (currentStatus === 1 || currentStatus === 10 || currentStatus === 9) {
-        console.log('debug', allowedTypes)
-        allowedTypes.push(1); 
+        allowedTypes.push(1);
       }
     }
 
-    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam'|| role === 'Supply') {
+    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam' || role === 'Supply') {
       // B1.  đơn Mới (1)
       if (currentStatus === 1) {
         allowedTypes.push(7); // Chốt
@@ -477,43 +468,35 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         allowedTypes.push(5); // Từ chối
       }
     }
-
-    // Lọc danh sách trạng thái
     const uniqueTypes = Array.from(new Set(allowedTypes));
     const result = allStatuses.filter(s => uniqueTypes.includes(s.Type));
     return result;
   };
-  // const isKinhDoanh = currentUser.department?.name_department === 'KINH_DOANH';
   const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
-
-
-
-// --- CLASSES CSS (Theme Adaptive) ---
-  const modalClass = theme === 'light' 
-    ? 'bg-white border-gray-200 shadow-2xl' 
+  const Editquantity =['Supply','Leader'].includes(currentUser?.role?.name_role);
+  const modalClass = theme === 'light'
+    ? 'bg-white border-gray-200 shadow-2xl'
     : 'glass-panel glass-panel-dark border-white/10';
-    
-  const inputClass = `w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 transition-all text-sm sm:text-base ${
-    theme === 'light'
-      ? 'bg-gray-50 border-gray-200 text-gray-900 focus:ring-blue-500/30'
-      : 'bg-gray-800/50 border-gray-700 text-white focus:ring-blue-500/50 placeholder-gray-500'
-  } disabled:opacity-60 disabled:cursor-not-allowed`;
 
-  const labelClass = `block text-xs sm:text-sm font-medium mb-1.5 ${
-    theme === 'light' ? 'text-gray-700' : 'text-gray-300'
-  }`;
+  const inputClass = `w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 transition-all text-sm sm:text-base ${theme === 'light'
+    ? 'bg-gray-50 border-gray-200 text-gray-900 focus:ring-blue-500/30'
+    : 'bg-gray-800/50 border-gray-700 text-white focus:ring-blue-500/50 placeholder-gray-500'
+    } disabled:opacity-60 disabled:cursor-not-allowed`;
+
+  const labelClass = `block text-xs sm:text-sm font-medium mb-1.5 ${theme === 'light' ? 'text-gray-700' : 'text-gray-300'
+    }`;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 animate-fade-in">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" 
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
       {/* Modal Container */}
       <div className={`relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl flex flex-col ${modalClass}`}>
-        
+
         {/* Header */}
         <div className={`flex items-center justify-between p-5 border-b ${theme === 'light' ? 'border-gray-100' : 'border-white/10'}`}>
           <div className="flex items-center gap-3">
@@ -531,120 +514,117 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
         {/* Content Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-6">
-          
+
           {/* 1. General Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Cột trái */}
             <div className="space-y-4">
-               {/* Order No (Chỉ hiện khi edit) */}
-               {!!order && (
-                 <div>
-                   <label className={labelClass}>Mã đơn hàng</label>
-                   <input value={formData.orderNumber} disabled className={inputClass} />
-                 </div>
-               )}
-               {/* Category */}
-               <div>
-                 <label className={labelClass}>Ngành hàng <span className="text-red-500">*</span></label>
-                 <select
-                    name="industry_id"
-                    value={selectedCategoryId}
-                    onChange={(e) => {
-                      setSelectedCategoryId(e.target.value);
-                      setFormData(prev => ({ ...prev, items: [] }));
-                    }}
-                    disabled={!!order || readOnly}
-                    className={inputClass}
-                 >
-                    <option value="">-- Chọn ngành hàng --</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                 </select>
-               </div>
-               {/* Supplier */}
-               <div>
-                 <label className={labelClass}>Nhà cung cấp <span className="text-red-500">*</span></label>
-                 <input
-                   name="supplier_name"
-                   value={formData.supplier_name}
-                   onChange={handleChange}
-                   disabled={readOnly}
-                   required
-                   placeholder="Nhập tên NCC..."
-                   className={inputClass}
-                 />
-               </div>
+              {/* Order No (Chỉ hiện khi edit) */}
+              {!!order && (
+                <div>
+                  <label className={labelClass}>Mã đơn hàng</label>
+                  <input value={formData.orderNumber} disabled className={inputClass} />
+                </div>
+              )}
+              {/* Category */}
+              <div>
+                <label className={labelClass}>Ngành hàng <span className="text-red-500">*</span></label>
+                <select
+                  name="industry_id"
+                  value={selectedCategoryId}
+                  onChange={(e) => {
+                    setSelectedCategoryId(e.target.value);
+                    setFormData(prev => ({ ...prev, items: [] }));
+                  }}
+                  disabled={!!order || readOnly}
+                  className={inputClass}
+                >
+                  <option value="">-- Chọn ngành hàng --</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              {/* Supplier */}
+              <div>
+                <label className={labelClass}>Nhà cung cấp <span className="text-red-500">*</span></label>
+                <input
+                  name="supplier_name"
+                  value={formData.supplier_name}
+                  onChange={handleChange}
+                  disabled={readOnly}
+                  required
+                  placeholder="Nhập tên NCC..."
+                  className={inputClass}
+                />
+              </div>
             </div>
 
             {/* Cột phải */}
             <div className="space-y-4">
-               <div>
-                 <label className={labelClass}>Ngày đặt hàng</label>
-                 <input
-                   type="date"
-                   name="orderDate"
-                   value={formData.orderDate}
-                   onChange={handleChange}
-                   disabled={!!order || readOnly}
-                   className={inputClass}
-                 />
-               </div>
-               <div>
-                 <label className={labelClass}>Mục đích sử dụng</label>
-                 <input
-                   name="intendedUse"
-                   value={formData.intendedUse}
-                   onChange={handleChange}
-                   disabled={readOnly}
-                   placeholder="VD: Mua bán, Nội bộ..."
-                   className={inputClass}
-                 />
-               </div>
+              <div>
+                <label className={labelClass}>Ngày đặt hàng</label>
+                <input
+                  type="date"
+                  name="orderDate"
+                  value={formData.orderDate}
+                  onChange={handleChange}
+                  disabled={!!order || readOnly}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Mục đích sử dụng</label>
+                <input
+                  name="intendedUse"
+                  value={formData.intendedUse}
+                  onChange={handleChange}
+                  disabled={readOnly}
+                  placeholder="VD: Mua bán, Nội bộ..."
+                  className={inputClass}
+                />
+              </div>
             </div>
           </div>
-
           {/* 2. Order Items */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-               <h3 className={`text-base font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-white'}`}>Danh sách sản phẩm</h3>
-               {!readOnly && canEditDetails && (
-                 <button
-                   type="button"
-                   onClick={addItem}
-                   disabled={!selectedCategoryId}
-                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                     !selectedCategoryId 
-                       ? 'bg-gray-100 text-gray-400 dark:bg-gray-800 cursor-not-allowed'
-                       : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-blue-500/30'
-                   }`}
-                 >
-                   <Plus className="h-4 w-4" /> Thêm sản phẩm
-                 </button>
-               )}
+              <h3 className={`text-base font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-white'}`}>Danh sách sản phẩm</h3>
+              {!readOnly && canEditDetails && (
+                <button
+                  type="button"
+                  onClick={addItem}
+                  disabled={!selectedCategoryId}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${!selectedCategoryId
+                    ? 'bg-gray-100 text-gray-400 dark:bg-gray-800 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-blue-500/30'
+                    }`}
+                >
+                  <Plus className="h-4 w-4" /> Thêm sản phẩm
+                </button>
+              )}
             </div>
-
             {/* List Items */}
-           <div className="space-y-3">
+            <div className="space-y-3">
               {formData.items.map((item, index) => {
                 const fallbackProduct = products.find(p => p.code === item.productCode);
                 const currentValue = item.productId || fallbackProduct?.id || '';
-                
+
                 return (
-                  <div key={index} className={`p-4 rounded-xl border transition-all ${
-                     theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'
-                  }`}>
+                  <div key={index} className={`p-4 rounded-xl border transition-all ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'
+                    }`}>
                     {/* Grid 12 cột */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                      
+
                       {/* 1. Sản phẩm (3 cột) */}
                       <div className="sm:col-span-3">
                         <label className={labelClass}>Sản phẩm</label>
                         {String(selectedCategoryId) === '18' ? (
-                          <input 
-                            value={item.productName} 
+                          <input
+                            value={item.productName}
                             onChange={e => updateItem(index, 'productName', e.target.value)}
                             disabled={readOnly || !canEditDetails}
                             placeholder="Tên sản phẩm..."
                             className={inputClass}
+                            title={item.productName}
                           />
                         ) : (
                           readOnly ? (
@@ -664,56 +644,78 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                           )
                         )}
                       </div>
-
                       {/* 2. Màu sắc (2 cột) - MỚI THÊM */}
                       <div className="sm:col-span-2">
                         <label className={labelClass}>Màu sắc</label>
                         <input
                           value={item.color}
-                          disabled 
+                          disabled
                           className={inputClass}
                         />
                       </div>
-
                       {/* 3. SL Yêu cầu (2 cột) */}
                       <div className="sm:col-span-2">
                         <label className={labelClass}>SL Yêu cầu</label>
                         <input
-                          type="number"
                           value={item.quantityOld}
                           onChange={e => updateItem(index, 'quantityOld', Number(e.target.value))}
                           disabled={readOnly || !canEditDetails}
                           className={inputClass}
                         />
                       </div>
-
                       {/* 4. SL Duyệt (2 cột) */}
+                    
                       <div className="sm:col-span-2">
                         <label className={labelClass}>SL Duyệt</label>
                         <input
-                          type="number"
                           value={item.quantity}
                           onChange={e => updateItem(index, 'quantity', Number(e.target.value))}
-                          disabled={readOnly || !canEditDetails}
+                          disabled={readOnly || !canEditDetails||!Editquantity}
                           className={`${inputClass} ${theme === 'dark' ? 'focus:border-yellow-500' : ''}`}
                         />
                       </div>
+             
+                      
 
                       {/* 5. Đơn giá (2 cột) */}
                       <div className="sm:col-span-2">
                         <label className={labelClass}>Đơn giá</label>
                         <input
-                          type="number"
                           value={item.price}
                           onChange={e => updateItem(index, 'price', Number(e.target.value))}
-                          disabled={String(selectedCategoryId) !== '18' || readOnly}
+                          disabled={!canEditDetails || readOnly|| !Editquantity}
                           className={inputClass}
                         />
                       </div>
-
+                      <div className="sm:col-span-2">
+                        <label className={labelClass}>Đơn giá ERP </label>
+                        <input
+                          value={item.erpPrice}
+                          onChange={e => updateItem(index, 'erpPrice', Number(e.target.value))}
+                          disabled
+                          className={inputClass}
+                        />
+                      </div>
                       {/* 6. Xóa (1 cột) */}
+
                       {!readOnly && (
                         <div className="sm:col-span-1 flex justify-center pb-1">
+                          {formData.orderNumber?.startsWith('MP') && item.id && (
+                            <button
+                              type="button"
+                              onClick={() => setInspectItemId(Number(item.id))}
+                              className={`
+                                p-2 rounded-lg transition-colors duration-200
+                                /* Light Mode */
+                                text-blue-600 hover:bg-blue-100 hover:text-blue-800
+                                /* Dark Mode */
+                                dark:text-blue-400 dark:hover:bg-blue-500/20 dark:hover:text-blue-200
+                              `}
+                              title="Xem phân bổ hàng cho Sales"
+                            >
+                              <List size={18} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => removeItem(index)}
@@ -733,61 +735,61 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
           {/* 3. Footer Summary & Status */}
           <div className={`p-4 rounded-xl border ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-black/20 border-white/5'}`}>
-             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex-1 w-full sm:w-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
-                   <div>
-                      <label className={labelClass}>Trạng thái đơn</label>
-                      <select
-                        name="status"
-                        value={formData.status}
-                        disabled={readOnly}
-                        onChange={(e) => {
-                           const val = Number(e.target.value);
-                           setFormData(prev => ({ ...prev, status: val }));
-                           if (val === 5) toast('Nhớ nhập lý do hủy vào ghi chú!', { icon: '📝' });
-                        }}
-                        className={inputClass}
-                      >
-                        {getAvailableStatuses().map(s => (
-                          <option key={s.ID} value={s.Type}>{s.Name}</option>
-                        ))}
-                      </select>
-                   </div>
-                   <div>
-                      <label className={labelClass}>Ngày giao dự kiến</label>
-                      <input
-                        type="date"
-                        name="estimatedDelivery"
-                        value={formData.estimatedDelivery}
-                        min={formData.orderDate}
-                        disabled={!canEditDetails && !readOnly}
-                        onChange={handleChange}
-                        className={inputClass}
-                      />
-                   </div>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex-1 w-full sm:w-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Trạng thái đơn</label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setFormData(prev => ({ ...prev, status: val }));
+                      if (val === 5) toast('Nhớ nhập lý do hủy vào ghi chú!', { icon: '📝' });
+                    }}
+                    className={inputClass}
+                  >
+                    {getAvailableStatuses().map(s => (
+                      <option key={s.ID} value={s.Type}>{s.Name}</option>
+                    ))}
+                  </select>
                 </div>
-                
+                <div>
+                  <label className={labelClass}>Ngày giao dự kiến</label>
+                  <input
+                    type="date"
+                    name="estimatedDelivery"
+                    value={formData.estimatedDelivery}
+                    min={formData.orderDate}
+                    disabled={!canEditDetails && !readOnly}
+                    onChange={handleChange}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
 
-             </div>
-             <div className="text-right min-w-[200px]">
-                   <p className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>Tổng tiền</p>
-                   <p className={`text-2xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
-                      {formData.total.toLocaleString()} ₫
-                   </p>
-                </div>
-             {/* Notes */}
-             <div className="mt-4">
-                <label className={labelClass}>Ghi chú</label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  rows={2}
-                  disabled={readOnly}
-                  className={inputClass}
-                  placeholder="Ghi chú thêm..."
-                />
-             </div>
+
+            </div>
+            <div className="text-right min-w-[200px]">
+              <p className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>Tổng tiền</p>
+              <p className={`text-2xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
+                {formData.total.toLocaleString()} ₫
+              </p>
+            </div>
+            {/* Notes */}
+            <div className="mt-4">
+              <label className={labelClass}>Ghi chú</label>
+              <textarea
+                name="notes"
+                value={formData.notes}
+                onChange={handleChange}
+                rows={2}
+                disabled={readOnly}
+                className={inputClass}
+                placeholder="Ghi chú thêm..."
+              />
+            </div>
           </div>
 
           {/* 4. Action Buttons */}
@@ -795,11 +797,10 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
             <button
               type="button"
               onClick={onClose}
-              className={`px-5 py-2.5 rounded-xl font-medium transition-all ${
-                theme === 'light' 
-                  ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
-                  : 'bg-white/5 text-gray-300 hover:bg-white/10'
-              }`}
+              className={`px-5 py-2.5 rounded-xl font-medium transition-all ${theme === 'light'
+                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                }`}
             >
               Đóng
             </button>
@@ -816,7 +817,14 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
         </form>
       </div>
-    </div>,
+      {inspectItemId && (
+        <DistributionModal
+          itemId={inspectItemId}
+          onClose={() => setInspectItemId(null)}
+        />
+      )}
+    </div>
+    ,
     document.body
   );
 };

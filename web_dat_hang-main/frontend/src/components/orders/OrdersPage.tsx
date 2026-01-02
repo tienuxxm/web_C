@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-  Plus, Search, RotateCcw, Edit, Eye, Package, Clock, CheckCircle, 
-  XCircle, AlertCircle, GitMerge, Upload, HandCoins, 
-  FileSpreadsheet, Filter, 
-} from 'lucide-react';import api from '../../services/api';
+import {
+  Plus, Search, RotateCcw, Edit, Eye, Package, Clock, CheckCircle,
+  XCircle, AlertCircle, GitMerge, Upload, HandCoins,
+  FileSpreadsheet, Filter,
+} from 'lucide-react'; import api from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import { OrderPayload, OrderFromAPI } from './OrderModal';
-import OrderModal from './OrderModal'; 
+import OrderModal from './OrderModal';
 import { getCurrentUser } from '../../utils/auth';
 import { useLocation } from 'react-router-dom';
 import MySwal from '../../utils/swal';
@@ -18,7 +18,7 @@ interface OrderItem {
   productCode: string;
   productName: string;
   quantity: number;
-  quantity_old:number;
+  quantity_old: number;
   price: number;
   color: string;
 }
@@ -32,14 +32,12 @@ interface StatusOption {
 interface Order {
   id: string;
   orderNumber: string;
-  supplier_name: string; // Tùy chọn nếu có
+  supplier_name: string;
   items: OrderItem[];
   subtotal: number;
-  tax: number;
-  shipping: number;
   total: number;
   status_name: string;
-  status: number; // 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+  status: number;
   shippingAddress: string;
   orderDate: string;
   estimatedDelivery: string;
@@ -48,7 +46,7 @@ interface Order {
 
 interface OrdersPageProps {
   mode: 'normal' | 'monthly' | 'yearly' | 'merged';
-  filterType?: string; 
+  filterType?: string;
 }
 
 
@@ -80,38 +78,36 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-     
+
       const endpoint = mode === 'merged' ? '/merge-orders' : '/orders';
 
       const params = {
-        page, 
+        page,
         q: search,
         status: selectedStatus !== 'all' ? selectedStatus : undefined,
         limit: 6,
         group: filterType
       };
-
       const res = await api.get(endpoint, { params });
       const mappedOrders: Order[] = res.data.data.map((o: any) => ({
-        id: o.id, 
+        id: o.id,
         orderNumber: o.order_number,
         supplier_name: o.supplier_name || 'N/A',
         customerName: o.customer_name,
         intendedUse: o.intended_use,
-        total: o.total_amount || o.total, 
+        total: o.total_amount ?? o.total ?? 0,
         status: Number(o.status),
         status_name: o.status_name,
-        orderDate: o.created_at || o.order_date, 
+        orderDate: o.created_at || o.order_date,
         itemsCount: o.items_count,
-
         items: o.items ? o.items.map((i: any) => ({
-          id: i.id, 
+          id: i.id,
           productCode: i.product_code,
           productName: i.product_name,
           quantity: i.quantity,
           quantityOld: i.quantity_old,
           price: i.price || 0,
-          total: i.total || (i.quantity * i.price)
+          total: i.total ?? 0
         })) : []
       }));
 
@@ -128,32 +124,32 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
 
 
 
-const loadStats = async () => {
-  try {
-    const endpoint = mode === 'merged' ? '/merge-orders/stats' : '/orders/stats';
+  const loadStats = async () => {
+    try {
+      const endpoint = mode === 'merged' ? '/merge-orders/stats' : '/orders/stats';
 
-    const params = {
-      group: filterType 
-    };
+      const params = {
+        group: filterType
+      };
 
-    const res = await api.get(endpoint, { params });
+      const res = await api.get(endpoint, { params });
 
-    setStats({
-      total: res.data.total_orders,
-      pending: res.data.pending_orders,
-      processing: res.data.processing_orders,
-      revenue: res.data.total_revenue
-    });
-  } catch (error) {
-    console.error("Lỗi tải thống kê", error);
-  }
-};
+      setStats({
+        total: res.data.total_orders,
+        pending: res.data.pending_orders,
+        processing: res.data.processing_orders,
+        revenue: res.data.total_revenue
+      });
+    } catch (error) {
+      console.error("Lỗi tải thống kê", error);
+    }
+  };
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-       
+
         const res = await api.get('/categories');
-      
+
         setCategories(res.data.categories || []);
       } catch (e) {
         console.error("Lỗi tải danh mục", e);
@@ -211,11 +207,11 @@ const loadStats = async () => {
       case 6:
       case 10:
         return 'text-blue-400 bg-blue-500/10 border-blue-500/30';
-      case 3: 
-      case 7: 
+      case 3:
+      case 7:
         return 'text-purple-400 bg-purple-500/10 border-purple-500/30';
       case 4:
-      case 8: 
+      case 8:
         return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30';
       case 9:
       case 11:
@@ -253,8 +249,6 @@ const loadStats = async () => {
         estimatedDelivery: apiOrder.estimated_delivery ?? '',
         notes: apiOrder.notes ?? '',
         subtotal: Number(apiOrder.subtotal),
-        tax: Number(apiOrder.tax),
-        shipping: Number(apiOrder.shipping),
         total: Number(apiOrder.total_amount),
         items: apiOrder.items.map((it: any) => ({
           id: it.id,
@@ -267,6 +261,8 @@ const loadStats = async () => {
           },
           quantity: Number(it.quantity),
           quantityOld: Number(it.quantity_old),
+          price: Number(it.unit_price),
+          erpPrice: Number(it.erp_price),
 
         }))
       };
@@ -328,19 +324,18 @@ const loadStats = async () => {
           intended_use: orderData.intended_use,
           status: orderData.status,
           estimated_delivery: orderData.estimated_delivery,
-          shipping: orderData.shipping,
           notes: orderData.notes,
           items: orderData.items.map(it => ({
             productCode: it.productCode,
             quantity: it.quantity,
-            quatityOld: it.quantityOld,
+            quantity_old: it.quantity_old,
             productName: it.productName,
             price: it.price,
             color: it.variant || '',
           })),
         };
         await api.post('/orders', payload);
-        fetchOrders(); 
+        fetchOrders();
         setShowModal(false);
         toast.success('Tạo đơn hàng thành công!');
       } catch (err: any) {
@@ -364,7 +359,7 @@ const loadStats = async () => {
       return;
     }
     try {
-      setIsSelectingAll(true); 
+      setIsSelectingAll(true);
       const res = await api.get('/orders/ids?status=7');
       setSelectedOrders(res.data);
       toast.success(`Đã chọn toàn bộ ${res.data.length} đơn hàng "Chốt" trong hệ thống.`);
@@ -378,54 +373,108 @@ const loadStats = async () => {
 
   const isHeaderChecked = selectedOrders.length > 0;
   const handleMergeOrders = async () => {
-
-    const result = await MySwal.fire({
-      title: 'Xác nhận gộp đơn?',
-      html: `
-            <div class="flex flex-col items-center gap-2">
-                <p>Bạn đang chọn gộp <span class="text-yellow-400 font-bold text-lg">${selectedOrders.length}</span> đơn hàng.</p>
-                <p class="text-sm opacity-80">Hệ thống sẽ tạo ra một đơn <b>MP (Merge PO)</b> mới.</p>
-            </div>
-        `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Tiến hành gộp',
-      cancelButtonText: 'Suy nghĩ lại',
-      reverseButtons: true, 
-
-     
-    });
-
-    if (!result.isConfirmed) return;
-
+    // 1. Kiểm tra có đơn trùng không
     try {
-      MySwal.fire({
-        title: 'Đang xử lý...',
-        didOpen: () => MySwal.showLoading()
-      });
-    
-      await MySwal.fire({
-        icon: 'success',
-        title: 'Gộp đơn thành công!',
-        timer: 2000,
-        showConfirmButton: false
+      // Show loading
+      MySwal.fire({ title: 'Đang kiểm tra...', didOpen: () => MySwal.showLoading() });
+
+      const checkRes = await api.post('/orders/check-merge', { order_ids: selectedOrders });
+      const existingMerges = checkRes.data.existing_merges || [];
+
+      let targetMergeId = null;
+
+      // 2. Nếu có đơn trùng -> Hiển thị bảng chọn
+      if (existingMerges.length > 0) {
+        // Đóng loading cũ
+        MySwal.close();
+
+        const { value: selectedMerge } = await MySwal.fire({
+          title: 'Tìm thấy Đơn Gộp khả dụng',
+          html: `
+              <div class="text-left">
+                  <p class="mb-4 text-sm text-gray-600 dark:text-gray-300">
+                      Nhà cung cấp <b class="text-gray-900 dark:text-white">${checkRes.data.supplier}</b> đang có các đơn gộp chờ xử lý. 
+                      <br/>Bạn có muốn gộp vào không?
+                  </p>
+
+                  <div class="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg">
+                      ${existingMerges.map((m: any) => `
+                          <label class="flex items-center p-3 border-b border-gray-100 dark:border-gray-700 cursor-pointer transition-colors 
+                              hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              
+                              <input type="radio" name="merge_choice" value="${m.DocumentNo}" 
+                                  class="mr-3 h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-500 dark:bg-gray-700 focus:ring-blue-500">
+                              
+                              <div>
+                                  <div class="font-bold text-gray-800 dark:text-gray-100">${m.DocumentNo}</div>
+                                  <div class="text-xs text-gray-500 dark:text-gray-400">
+                                      Ngày tạo: ${new Date(m.CreatedDate || m.PostingDate).toLocaleDateString('vi-VN')}
+                                  </div>
+                                  <div class="text-xs text-gray-500 dark:text-gray-400 italic truncate max-w-xs opacity-80">
+                                      ${m.Note || 'Không có ghi chú'}
+                                  </div>
+                              </div>
+                          </label>
+                      `).join('')}
+
+                      <label class="flex items-center p-3 cursor-pointer transition-colors
+                          bg-blue-50/50 hover:bg-blue-100/50
+                          dark:bg-blue-900/20 dark:hover:bg-blue-900/40">
+                          
+                          <input type="radio" name="merge_choice" value="NEW" checked
+                              class="mr-3 h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-500 dark:bg-gray-700 focus:ring-blue-500">
+                          
+                          <div class="font-bold text-blue-700 dark:text-blue-400">
+                              ➕ Tạo Đơn Gộp Mới
+                          </div>
+                      </label>
+                  </div>
+              </div>
+          `,
+          icon: 'info',
+          showCancelButton: true,
+          confirmButtonText: 'Tiếp tục',
+          cancelButtonText: 'Hủy bỏ',
+          preConfirm: () => {
+            // Lấy giá trị radio được chọn
+            const selected = document.querySelector('input[name="merge_choice"]:checked') as HTMLInputElement;
+            return selected ? selected.value : null;
+          }
+        });
+
+        if (!selectedMerge) return; // Hủy bỏ
+
+        if (selectedMerge !== 'NEW') {
+          targetMergeId = selectedMerge;
+        }
+      }
+      // Nếu không có đơn trùng -> Hỏi xác nhận gộp mới bình thường
+      else {
+        const confirm = await MySwal.fire({
+          title: 'Xác nhận gộp đơn?',
+          text: `Bạn sẽ tạo đơn gộp mới từ ${selectedOrders.length} đơn PO.`,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Gộp ngay'
+        });
+        if (!confirm.isConfirmed) return;
+      }
+
+      // 3. Gửi API Merge chính thức
+      MySwal.fire({ title: 'Đang xử lý gộp...', didOpen: () => MySwal.showLoading() });
+
+      await api.post('/orders/merge', {
+        order_ids: selectedOrders,
+        target_merge_id: targetMergeId // Gửi kèm ID nếu chọn gộp vào cũ
       });
 
-    } catch (error) {
-      MySwal.fire({
-        icon: 'error',
-        title: 'Có lỗi xảy ra',
-        text: 'Không thể gộp đơn hàng lúc này.'
-      });
-    }
+      await MySwal.fire('Thành công!', 'Đã gộp đơn hàng.', 'success');
 
-    try {
-      await api.post('/orders/merge', { order_ids: selectedOrders });
-      toast.success("Gộp đơn thành công!");
-      setSelectedOrders([]); 
+      setSelectedOrders([]);
       fetchOrders();
-    } catch (error) {
-      toast.error("Gộp đơn thất bại");
+
+    } catch (error: any) {
+      MySwal.fire('Lỗi', error.response?.data?.message || 'Có lỗi xảy ra', 'error');
     }
   };
   const handleExportOrders = async () => {
@@ -470,12 +519,12 @@ const loadStats = async () => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('industry_id', importIndustryId); 
+      formData.append('industry_id', importIndustryId);
 
-      
-const res = await api.post('/orders/import', formData, {
+
+      const res = await api.post('/orders/import', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data', 
+          'Content-Type': 'multipart/form-data',
         },
       });
       await MySwal.fire({
@@ -500,12 +549,12 @@ const res = await api.post('/orders/import', formData, {
   useEffect(() => {
     const user = getCurrentUser();
     setCurrentUser(user);
-  }, []); 
+  }, []);
 
   const fetchMonthlyOrders = async () => {
     try {
       const res = await api.get('/orders/merged-by-month');
-      setMonthlyOrders(res.data); 
+      setMonthlyOrders(res.data);
     } catch (error) {
       console.error('❌ Lỗi khi fetch đơn gộp theo tháng:', error);
     }
@@ -514,7 +563,7 @@ const res = await api.post('/orders/import', formData, {
   const fetchYearlyOrders = async () => {
     try {
       const res = await api.get('/orders/merged-by-year');
-      setYearlyOrders(res.data); 
+      setYearlyOrders(res.data);
     } catch (error) {
       console.error('❌ Lỗi khi fetch đơn gộp theo năm:', error);
     }
@@ -535,7 +584,7 @@ const res = await api.post('/orders/import', formData, {
     }
   }, [mode, page, refreshKey, currentUser, search, filterType]);
 
- 
+
   const reloadList = () => {
     setRefreshKey(prev => prev + 1);
   };
@@ -610,15 +659,16 @@ const res = await api.post('/orders/import', formData, {
   return (
     <div className="h-full flex flex-col space-y-6 animate-fade-in-up">
       {/* Page Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900/50 p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-glass-dark transition-all duration-300">        <div>
-          <h1 className="text-3xl font-bold text-bitex-primary dark:text-white">
-            Order Management
-          </h1>
-        </div>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900/50 p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm dark:shadow-glass-dark transition-all duration-300">        <div>
+        <h1 className="text-3xl font-bold text-bitex-primary dark:text-white">
+          Order Management
+        </h1>
+      </div>
         <div className='flex flex-wrap items-center gap-2 sm:gap-4 w-full md:w-auto'>
-            <button
+          <button
             onClick={handleAddOrder}
             className="flex items-center space-x-2 px-3 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-medium rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base"
+
           >
             <Plus className="h-5 w-5" />
             <span className="hidden sm:inline">Tạo đơn</span>
@@ -639,32 +689,29 @@ const res = await api.post('/orders/import', formData, {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           { label: 'Tổng đơn', val: stats.total, icon: Package, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-          { label: config.pending.label, val: stats.pending, icon: config.pending.icon, color:config.pending.color,bg:config.pending.bg },
-          { label: config.processing.label, val: stats.processing, icon: config.processing.icon, color:config.processing.color, bg: config.processing.bg },
+          { label: config.pending.label, val: stats.pending, icon: config.pending.icon, color: config.pending.color, bg: config.pending.bg },
+          { label: config.processing.label, val: stats.processing, icon: config.processing.icon, color: config.processing.color, bg: config.processing.bg },
           { label: 'Thành Tiền', val: stats.revenue.toLocaleString(), icon: HandCoins, color: 'text-green-400', bg: 'bg-green-500/10', isCurrency: true }
         ].map((stat, idx) => (
           <div key={idx} className="glass-panel glass-panel-dark p-4 sm:p-6 rounded-2xl border border-white/10 relative overflow-hidden group">
-             <div className="flex justify-between items-start z-10 relative">
-                <div>
-                   <p className="text-blue-500 dark:text-gray-400 text-xs sm:text-sm font-medium uppercase tracking-wider">{stat.label}</p>
-                   <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                      {stat.val} {stat.isCurrency ? '₫' : ''}
-                   </h3>
-                </div>
-                <div className={`p-2 rounded-lg ${stat.bg}`}>
-                   <stat.icon className={`h-5 w-5 sm:h-6 sm:w-6 ${stat.color}`} />
-                </div>
-             </div>
+            <div className="flex justify-between items-start z-10 relative">
+              <div>
+                <p className="text-blue-500 dark:text-gray-400 text-xs sm:text-sm font-medium uppercase tracking-wider">{stat.label}</p>
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                  {stat.val} {stat.isCurrency ? '₫' : ''}
+                </h3>
+              </div>
+              <div className={`p-2 rounded-lg ${stat.bg}`}>
+                <stat.icon className={`h-5 w-5 sm:h-6 sm:w-6 ${stat.color}`} />
+              </div>
+            </div>
           </div>
         ))}
       </div>
-
-      {/* 3. Filters and Search (Giữ nguyên cấu trúc của bạn nhưng sửa màu sắc) */}
-      <div className={`rounded-2xl p-3 sm:p-6 border transition-all duration-300 ${
-         theme === 'light' ? 'bg-white shadow-sm border-gray-200' : 'glass-panel glass-panel-dark border-white/5'
-      }`}>
+      <div className={`rounded-2xl p-3 sm:p-6 border transition-all duration-300 ${theme === 'light' ? 'bg-white shadow-sm border-gray-200' : 'glass-panel glass-panel-dark border-white/5'
+        }`}>
         <div className="flex flex-col space-y-4 lg:flex-row lg:items-center lg:justify-between lg:space-y-0 lg:space-x-4">
-          
+
           {/* Search */}
           <div className="relative flex-1 md:flex-none group">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
@@ -721,26 +768,25 @@ const res = await api.post('/orders/import', formData, {
 
             {/* 4. Select Status */}
             <div className="relative">
-               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-               <select
-                 value={selectedStatus}
-                 onChange={e => { setSelectedStatus(e.target.value); setPage(1); }}
-                 className="pl-9 pr-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base transition-all appearance-none cursor-pointer"
-               >
-                 <option value="all">Tất cả trạng thái</option>
-                 {allStatuses.map(status => (
-                   <option key={status.ID} value={status.Type}>{status.Name}</option>
-                 ))}
-               </select>
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <select
+                value={selectedStatus}
+                onChange={e => { setSelectedStatus(e.target.value); setPage(1); }}
+                className="pl-9 pr-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm sm:text-base transition-all appearance-none cursor-pointer"
+              >
+                <option value="all">Tất cả trạng thái</option>
+                {allStatuses.map(status => (
+                  <option key={status.ID} value={status.Type}>{status.Name}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
       </div>
 
       {/* 4. Orders Table (Sửa lại màu sắc cho Dark/Light) */}
-      <div className={`rounded-2xl overflow-hidden border transition-all duration-300 relative flex flex-col ${
-         theme === 'light' ? 'bg-white border-gray-200 shadow-sm' : 'glass-panel glass-panel-dark border-white/5'
-      }`}>
+      <div className={`rounded-2xl overflow-hidden border transition-all duration-300 relative flex flex-col ${theme === 'light' ? 'bg-white border-gray-200 shadow-sm' : 'glass-panel glass-panel-dark border-white/5'
+        }`}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px]">
             <thead className={`border-b ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-gray-800/50 border-gray-700/50'}`}>
@@ -814,7 +860,7 @@ const res = await api.post('/orders/import', formData, {
                           <Edit className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleEditOrder(order, true)} 
+                          onClick={() => handleEditOrder(order, true)}
                           className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-500/10 rounded-lg transition-colors"
                         >
                           <Eye className="h-4 w-4" />
@@ -827,7 +873,7 @@ const res = await api.post('/orders/import', formData, {
             </tbody>
           </table>
         </div>
-        
+
         {filteredOrders.length === 0 && (
           <div className="text-center py-12">
             <Package className="h-8 w-8 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-4" />
@@ -855,9 +901,9 @@ const res = await api.post('/orders/import', formData, {
         )}
       </div>
 
-      
 
-      
+
+
       {/* Order Modal */}
       {showModal && (
         <OrderModal
@@ -865,7 +911,7 @@ const res = await api.post('/orders/import', formData, {
           onSave={handleSaveOrder}
           onClose={() => setShowModal(false)}
           readOnly={readOnlyMode}
-          currentUser={currentUser} 
+          currentUser={currentUser}
         />
       )}
     </div>

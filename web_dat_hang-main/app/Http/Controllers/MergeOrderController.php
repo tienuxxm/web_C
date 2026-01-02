@@ -5,22 +5,23 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\MergeOrder;
 use App\Models\MergeOrderItem;
+use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class MergeOrderController extends Controller
 {
- 
+
     public function show($id)
     {
         try {
             $order = MergeOrder::with([
-                'items', 
-                'statusInfo', 
-                'originalOrderItems.order' 
+                'items.product',
+                'statusInfo',
+                'originalOrderItems.order'
             ])
-            ->where('DocumentNo', $id)
-            ->firstOrFail();
+                ->where('DocumentNo', $id)
+                ->firstOrFail();
 
             $subtotal = $order->items->sum(function ($item) {
                 return $item->Quantity * $item->Price;
@@ -32,13 +33,13 @@ class MergeOrderController extends Controller
 
             if ($firstOriginalItem && $firstOriginalItem->order) {
                 $originalHeader = $firstOriginalItem->order;
-                $supplierName = $originalHeader->Supplier ?? 'N/A';
-                $intendedUse  = $originalHeader->IntendedUse ?? 'Gộp đơn';
+                $supplierName = $originalHeader->Supplier;
+                $intendedUse  = $originalHeader->IntendedUse;
             }
             $formattedOrder = [
                 'id'                 => $order->DocumentNo,
                 'order_number'       => $order->DocumentNo,
-                'supplier_name'      => $supplierName, 
+                'supplier_name'      => $supplierName,
                 'intended_use'       => $intendedUse,
                 'status'             => (int)$order->Status,
                 'status_name'        => $order->statusInfo->Name ?? '',
@@ -49,20 +50,23 @@ class MergeOrderController extends Controller
                 'industry_id'        => $order->Industry,
                 'created_by'            => $order->CreatedBy,
                 'created_date'          => $order->CreatedDate,
-                'note'                  => $order->Note,           
-                'modified_by'           => $order->ModifiedBy,     
-                'modified_date'         => $order->ModifiedDate,   
+                'note'                  => $order->Note,
+                'modified_by'           => $order->ModifiedBy,
+                'modified_date'         => $order->ModifiedDate,
                 'note_manager'          => $order->NoteManager,
                 'modified_manager_by'   => $order->ModifiedManagerBy,
                 'modified_manager_date' => $order->ModifiedManagerDate,
                 'items' => $order->items->map(function ($item) {
+                    $erpPrice =  $item->product;
                     return [
                         'id'               => $item->ID,
-                        'purchase_line_id' => $item->PurchaseLineID, 
+                        'purchase_line_id' => $item->PurchaseLineID,
                         'product_code'     => $item->ItemCode,
                         'product_name'     => $item->ItemName,
                         'quantity'         => (float)$item->Quantity,
+                        'quantity_old'     => (float)$item->QuantityOld,
                         'unit_price'       => (float)$item->Price,
+                        'erp_price'            => $erpPrice->price,
                         'unit'             => $item->Unit,
                         'total'            => (float)($item->Quantity * $item->Price),
                         'product' => [
@@ -99,9 +103,8 @@ class MergeOrderController extends Controller
         }
 
         // 1. GỌI POLICY
-        // (Nhớ đã khai báo protected $policies trong AuthServiceProvider)
         if ($user->cannot('updateStatus', [$order, $newStatus])) {
-             return response()->json([
+            return response()->json([
                 'message' => "Bạn không có quyền chuyển từ trạng thái [$currentStatus] sang [$newStatus]."
             ], 403);
         }
@@ -109,7 +112,7 @@ class MergeOrderController extends Controller
         // 2. CHUẨN BỊ DỮ LIỆU (Mapping cột theo DB mới)
         $now = now();
         $userCode = $user->code;
-        
+
         $headerUpdateData = ['Status' => $newStatus];
         $lineUpdateData   = ['Status' => $newStatus];
 
@@ -126,8 +129,7 @@ class MergeOrderController extends Controller
             // Line
             $lineUpdateData['ModifiedManagerBy']   = $userCode;
             $lineUpdateData['ModifiedManagerDate'] = $now;
-        }
-        else {
+        } else {
             $headerUpdateData['ModifiedBy']   = $userCode;
             $headerUpdateData['ModifiedDate'] = $now;
             if ($request->has('notes')) {
@@ -154,11 +156,11 @@ class MergeOrderController extends Controller
         $user = JWTAuth::user();
         $group = $request->get('group', 'merged');
         $headerModel = new MergeOrder();
-        $lineModel   = new MergeOrderItem(); 
-        $rawHeaderTbl = $headerModel->getTable(); 
-        $rawLineTbl   = $lineModel->getTable();   
-        $tblHeader = '[' . $rawHeaderTbl . ']'; 
-        $tblLine   = '[' . $rawLineTbl . ']';   
+        $lineModel   = new MergeOrderItem();
+        $rawHeaderTbl = $headerModel->getTable();
+        $rawLineTbl   = $lineModel->getTable();
+        $tblHeader = '[' . $rawHeaderTbl . ']';
+        $tblLine   = '[' . $rawLineTbl . ']';
         $query = MergeOrder::query();
         if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
             $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
@@ -166,24 +168,22 @@ class MergeOrderController extends Controller
         }
         $pending = [];
         $processing = [];
-        $total = []; 
+        $total = [];
         if ($group === 'merged' || $group === 'merged_process') {
-            if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')||$user->isRole('Supply')) {
-                $pending = [8];      
-                $processing = [3];  
-                $total = [8, 3];     
-            } 
-            elseif ($user->isRole('Leader')) {
-                $pending = [2];      
-                $processing = [3];   
+            if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam') || $user->isRole('Supply')) {
+                $pending = [8];
+                $processing = [3];
+                $total = [8, 3];
+            } elseif ($user->isRole('Leader')) {
+                $pending = [2];
+                $processing = [3];
                 $total = [2, 3];
             } else {
                 $total = [8, 2, 3];
             }
-        }
-        elseif ($group === 'merged_completed' || $group === 'completed') {
-            $pending = [4];         
-            $processing = [11];     
+        } elseif ($group === 'merged_completed' || $group === 'completed') {
+            $pending = [4];
+            $processing = [11];
             $total = [4, 11];
         }
 
@@ -199,9 +199,9 @@ class MergeOrderController extends Controller
         if ($stats->total > 0) {
             $revenueQuery = clone $query;
             $revenueQuery->join(
-                DB::raw("$tblLine as lines"), 
-                'lines.DocumentNo', 
-                '=', 
+                DB::raw("$tblLine as lines"),
+                'lines.DocumentNo',
+                '=',
                 DB::raw("$tblHeader.[DocumentNo]") // Bọc DB::raw để Laravel không tự thêm ngoặc sai
             );
             $revenueQuery->whereIn(DB::raw("$tblHeader.[Status]"), $total);
@@ -221,28 +221,21 @@ class MergeOrderController extends Controller
             $user = JWTAuth::user();
             $query = MergeOrder::with(['items', 'statusInfo', 'originalOrderItems.order'])
                 ->orderBy('CreatedDate', 'desc');
-
             if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
                 $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
                 $query->whereIn('Industry', $allowedIndustries);
+            } elseif ($user->isRole('Leader')) {
             }
-            elseif ($user->isRole('Leader')) {
-            }
-
             $group = $request->get('group', 'merged');
-
             if ($group === 'merged' || $group === 'merged_process') {
                 if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
-                    $query->whereIn('Status', [8, 3,2, 5]);
-                }
-                elseif ($user->isRole('Leader')) {
+                    $query->whereIn('Status', [8, 3, 2, 5]);
+                } elseif ($user->isRole('Leader')) {
                     $query->whereIn('Status', [2, 3, 5]);
+                } else {
+                    $query->whereIn('Status', [8, 2, 3, 5]);
                 }
-                else {
-                    $query->whereIn('Status', [8, 2, 3, 5]); 
-                }
-            }
-            elseif ($group === 'completed' || $group === 'merged_completed') {
+            } elseif ($group === 'completed' || $group === 'merged_completed') {
                 $query->whereIn('Status', [4, 11]);
             }
             if ($request->has('q') && !empty($request->q)) {
@@ -259,14 +252,14 @@ class MergeOrderController extends Controller
                 return [
                     'id'            => $order->DocumentNo,
                     'order_number'  => $order->DocumentNo,
-                    'supplier_name' => $supplierName, 
+                    'supplier_name' => $supplierName,
                     'intended_use'  => $intendedUse,
                     'customer_name' => $order->CreatedBy,
                     'created_at'    => $order->CreatedDate,
                     'order_date'    => $order->PostingDate,
                     'status'        => (int)$order->Status,
                     'status_name'   => $order->statusInfo?->Name ?? 'Unknown',
-                    'total'         => $totalAmount, 
+                    'total'         => $totalAmount,
                     'items_count'   => $order->items->count(),
                     'items'         => $order->items->map(function ($it) {
                         return [
@@ -288,9 +281,96 @@ class MergeOrderController extends Controller
 
             $orders->setCollection($data);
             return response()->json($orders);
-
         } catch (\Exception $e) {
             return response()->json(['message' => 'Lỗi tải danh sách', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    // GET /api/merge-orders/items/{id}/distribution
+    public function getDistribution($id)
+    {
+        try {
+            // 1. Lấy dòng hàng trong đơn gộp
+            $mergeItem = MergeOrderItem::findOrFail($id);
+
+            $sourceIds = array_filter(explode('-', $mergeItem->PurchaseLineID));
+
+            if (empty($sourceIds)) {
+                return response()->json(['message' => 'Sản phẩm này được thêm thủ công.'], 200);
+            }
+
+            $originalItems = \App\Models\OrderItem::with(['order.user'])
+                ->whereIn('ID', $sourceIds)
+                ->get();
+
+            // --- 👇 SỬA ĐOẠN NÀY (QUAN TRỌNG) ---
+            // Tính tổng nhu cầu dựa trên QuantityOld (Sales yêu cầu)
+            // Dùng fallback ?? 0 đề phòng dữ liệu cũ null
+            $totalDemand = $originalItems->sum('QuantityOld');
+
+            $supplyQty   = $mergeItem->Quantity; // Số thực tế Supply chốt trên đơn Gộp
+
+            $distribution = [];
+
+            // Kịch bản 1: Hàng về ĐỦ hoặc DƯ
+            if ($supplyQty >= $totalDemand) {
+                foreach ($originalItems as $item) {
+                    // Lấy đúng số Sales yêu cầu
+                    $reqQty = (float)($item->QuantityOld ?? $item->Quantity);
+
+                    $distribution[] = [
+                        'po_number'    => $item->DocumentNo,
+                        'sales_name'   => $item->order->user->name ?? $item->CreatedBy,
+
+                        'requested'    => $reqQty, // ✅ Hiển thị số Sales muốn (100)
+                        'allocated'    => $reqQty, // ✅ Chia đủ (100)
+                        'note'         => 'Đủ hàng'
+                    ];
+                }
+                // Phần dư ra
+                $remainder = $supplyQty - $totalDemand;
+                if ($remainder > 0) {
+                    $distribution[] = [
+                        'po_number'    => 'KHO_DU_TRU',
+                        'sales_name'   => 'Kho / Cung ứng',
+                        'requested'    => 0,
+                        'allocated'    => $remainder,
+                        'note'         => 'Hàng dư nhập kho'
+                    ];
+                }
+            }
+            // Kịch bản 2: Thiếu hàng -> Chia tỷ lệ
+            else {
+                $ratio = ($totalDemand > 0) ? ($supplyQty / $totalDemand) : 0;
+
+                // Debug (nếu cần): 550 / 300 = 1.83 (Trường hợp này ko xảy ra vì rơi vào if trên)
+                // Ví dụ Supply chỉ có 200 / Demand 300 => Ratio 0.66
+
+                foreach ($originalItems as $index => $item) {
+                    $reqQty = (float)($item->QuantityOld ?? $item->Quantity);
+
+                    $allocated = $reqQty * $ratio;
+
+                    $distribution[] = [
+                        'po_number'    => $item->DocumentNo,
+                        'sales_name'   => $item->order->user->name ?? $item->CreatedBy,
+
+                        'requested'    => $reqQty, // ✅ Hiển thị số Sales muốn
+                        'allocated'    => (float)$allocated,
+                        'note'         => 'Thiếu hàng (Cắt giảm)'
+                    ];
+                }
+            }
+
+            return response()->json([
+                'product_name' => $mergeItem->ItemName,
+                'total_supply' => $supplyQty,
+                'total_demand' => $totalDemand,
+                'status'       => ($supplyQty >= $totalDemand) ? 'sufficient' : 'shortage',
+                'distribution' => $distribution
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Lỗi tính toán: ' . $e->getMessage()], 500);
         }
     }
 }
