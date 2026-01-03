@@ -75,8 +75,8 @@ export const getStatConfig = (
 
   // --- MẶC ĐỊNH ---
   return {
-    pending: { label: 'pending', description: 'Pending', color: 'bg-gray-500/10', bg: 'bg-gray-500/10',icon: Clock },
-    processing: { label: 'processing', description: 'Processing', color: 'bg-blue-500/10',bg: 'bg-blue-500/10', icon: TrendingUp }
+    pending: { label: 'Chờ duyệt', description: 'Pending', color: 'bg-gray-500/10', bg: 'bg-gray-500/10',icon: Clock },
+    processing: { label: 'Đang xử lý', description: 'Processing', color: 'bg-blue-500/10',bg: 'bg-blue-500/10', icon: TrendingUp }
   };
 };
 

@@ -47,7 +47,7 @@ const DistributionModal: React.FC<DistributionProps> = ({ itemId, onClose }) => 
             <h3 className="font-bold text-lg text-gray-800 dark:text-white">Chi tiết Phân Bổ Hàng</h3>
             <p className="text-sm text-blue-600 truncate max-w-md">{data.product_name}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full"><X size={20} /></button>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors"><X size={20} /></button>
         </div>
 
         {/* Summary Info */}

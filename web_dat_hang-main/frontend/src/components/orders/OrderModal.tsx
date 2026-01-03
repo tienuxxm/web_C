@@ -473,7 +473,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     return result;
   };
   const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
-  const Editquantity =['Supply','Leader'].includes(currentUser?.role?.name_role);
+  const splitOrder = !readOnly && [8].includes(Number(order?.status));  
+  const Editquantity =['Supply'].includes(currentUser?.role?.name_role);
   const modalClass = theme === 'light'
     ? 'bg-white border-gray-200 shadow-2xl'
     : 'glass-panel glass-panel-dark border-white/10';
@@ -588,7 +589,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className={`text-base font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-white'}`}>Danh sách sản phẩm</h3>
-              {!readOnly && canEditDetails && (
+              {canEditDetails && (
                 <button
                   type="button"
                   onClick={addItem}
@@ -698,7 +699,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                       </div>
                       {/* 6. Xóa (1 cột) */}
 
-                      {!readOnly && (
+                      
                         <div className="sm:col-span-1 flex justify-center pb-1">
                           {formData.orderNumber?.startsWith('MP') && item.id && (
                             <button
@@ -716,16 +717,19 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                               <List size={18} />
                             </button>
                           )}
+                          { (canEditDetails  || splitOrder) &&(
                           <button
-                            type="button"
-                            onClick={() => removeItem(index)}
-                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
-                            title="Xóa dòng"
-                          >
-                            <Trash2 className="h-5 w-5" />
+                              type="button"
+                              onClick={() => removeItem(index)}
+                              className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
+                              title="Xóa dòng"
+                            >
+                              <Trash2 className="h-5 w-5" />
                           </button>
+                          )}
+                          
                         </div>
-                      )}
+                     
                     </div>
                   </div>
                 )

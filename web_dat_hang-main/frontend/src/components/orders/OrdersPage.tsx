@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus, Search, RotateCcw, Edit, Eye, Package, Clock, CheckCircle,
   XCircle, AlertCircle, GitMerge, Upload, HandCoins,
-  FileSpreadsheet, Filter,
+ Split, Filter,
 } from 'lucide-react'; import api from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import { OrderPayload, OrderFromAPI } from './OrderModal';
@@ -477,6 +477,63 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
       MySwal.fire('Lỗi', error.response?.data?.message || 'Có lỗi xảy ra', 'error');
     }
   };
+  const handleUnmerge = async (mergeId: string) => {
+    // 1. Hiển thị Popup xác nhận (Giao diện Darkmode chuẩn)
+    console.log("ID gửi lên server:", mergeId);
+    const result = await MySwal.fire({
+      title: 'Hủy Đơn Gộp?',
+      html: `
+        <div class="text-left">
+            <p class="mb-3 text-sm text-gray-600 dark:text-gray-300">
+                Bạn có chắc chắn muốn xóa đơn gộp <b class="text-gray-900 dark:text-white">${mergeId}</b> không?
+            </p>
+            <div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg">
+                <p class="text-xs font-bold text-red-700 dark:text-red-400 mb-1">⚠️ Lưu ý hành động này:</p>
+                <ul class="list-disc pl-5 text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                    <li>Đơn gộp <b>${mergeId}</b> sẽ bị xóa vĩnh viễn khỏi hệ thống.</li>
+                    <li>Các đơn PO con sẽ được trả về trạng thái <b>Chốt </b> để chờ xử lý lại.</li>
+                </ul>
+            </div>
+        </div>
+      `,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33', // Màu đỏ cho hành động xóa
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Đồng ý hủy',
+      cancelButtonText: 'Giữ lại'
+    });
+  
+    // Nếu người dùng bấm Cancel thì dừng lại
+    if (!result.isConfirmed) return;
+  
+    try {
+      // 2. Show loading
+      MySwal.fire({ 
+          title: 'Đang hủy đơn...', 
+          didOpen: () => MySwal.showLoading() 
+      });
+  
+      // 3. Gọi API trực tiếp (DELETE)
+      // Lưu ý: Route backend là: DELETE /api/orders/merge/{id}
+      await api.delete(`/orders/merge/${mergeId}`);
+  
+      // 4. Thông báo thành công
+      await MySwal.fire(
+        'Đã hủy!',
+        'Đơn gộp đã được xóa thành công. Các PO đã quay về trạng thái Chốt.',
+        'success'
+      );     
+      fetchOrders();
+    } catch (error: any) {
+      // 6. Xử lý lỗi
+      MySwal.fire(
+        'Lỗi',
+        error.response?.data?.message || 'Không thể hủy đơn gộp này.',
+        'error'
+      );
+    }
+  };
   const handleExportOrders = async () => {
     try {
       const res = await api.post(
@@ -864,6 +921,14 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
                           className="p-2 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-500/10 rounded-lg transition-colors"
                         >
                           <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          title="tách đơn "
+                          onClick={() => handleUnmerge(order.orderNumber)}
+                          className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors"
+                        >
+
+                          <Split className="h-4 w-4" />
                         </button>
                       </div>
                     </td>

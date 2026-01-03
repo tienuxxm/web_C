@@ -40,6 +40,7 @@ Route::middleware('auth:api')->group(function () {
         Route::get('merged-by-month', 'mergedByMonth'); // Đưa trước
         Route::get('merged-by-year', 'mergedByYear');   // Thêm route cho yearly
         Route::post('merge',         'merge');
+        Route::delete('merge/{id}', 'unMerge');
         Route::get('stats', 'stats');
         Route::get('/',        'index');
         Route::post('/',       'store');

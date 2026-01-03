@@ -1048,6 +1048,55 @@ class OrderController extends Controller
             'output' => $output
         ], 200);
     }
-    // GET /api/orders/check-merge
+    public function unMerge($id)
+    {
+        $user = JWTAuth::user();
 
+        DB::connection('sqlsrv')->beginTransaction();
+        try {
+            // 1. Tìm đơn Gộp
+            $mergeOrder = MergeOrder::where('DocumentNo', $id)->first();
+
+            if ($mergeOrder->Status != 8) {
+                return response()->json(['message' => 'Không thể hủy đơn đã xử lý (Khác trạng thái 8).'], 422);
+            }
+
+            // 2. Lấy danh sách các dòng đơn con đang liên kết
+            $childItems = OrderItem::where('MergeHeaderID', $id)->get();
+            
+            // Lấy danh sách mã đơn PO cha (unique)
+            $poDocumentNos = $childItems->pluck('DocumentNo')->unique()->toArray();
+
+            // 3. Reset các dòng đơn con (OrderItems)
+           OrderItem::where('MergeHeaderID', $id)
+                ->update([
+                    'MergeHeaderID' => null, // Gỡ liên kết
+                    'Status'        => 7,    // Quay về trạng thái Chốt
+                    'ModifiedBy'    => $user->code,
+                    'ModifiedDate'  => now()
+                ]);
+
+            // 4. Reset các đơn PO cha (Orders)
+            if (!empty($poDocumentNos)) {
+                Order::whereIn('DocumentNo', $poDocumentNos)
+                    ->update([
+                        'Status'       => 7, // Quay về trạng thái Chốt
+                        'ModifiedBy'   => $user->code,
+                        'ModifiedDate' => now()
+                    ]);
+            }
+
+            // 5. Xóa dữ liệu bảng Merge
+            MergeOrderItem::where('DocumentNo', $id)->delete(); // Xóa Line
+            $mergeOrder->delete();                              // Xóa Header
+
+            DB::connection('sqlsrv')->commit();
+
+            return response()->json(['message' => 'Đã hủy đơn gộp và trả lại trạng thái cho các đơn PO.'], 200);
+
+        } catch (\Exception $e) {
+            DB::connection('sqlsrv')->rollBack();
+            return response()->json(['message' => 'Lỗi hủy đơn: ' . $e->getMessage()], 500);
+        }
+    }
 }
