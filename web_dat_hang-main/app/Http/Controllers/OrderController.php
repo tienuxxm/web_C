@@ -1056,7 +1056,9 @@ class OrderController extends Controller
         try {
             // 1. Tìm đơn Gộp
             $mergeOrder = MergeOrder::where('DocumentNo', $id)->first();
-
+            if (!$mergeOrder) {
+                return response()->json(['message' => 'Không tìm thấy đơn gộp có mã: ' . $id], 404);
+            }
             if ($mergeOrder->Status != 8) {
                 return response()->json(['message' => 'Không thể hủy đơn đã xử lý (Khác trạng thái 8).'], 422);
             }

@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\ReportController;
+use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\CategoryController;
@@ -34,6 +34,7 @@ Route::middleware('auth:api')->group(function () {
     Route::put('products/{id}',          [ProductController::class, 'update']);
     Route::put('products/{id}/status',   [ProductController::class, 'updateStatus']);
     /* Orders */
+    Route::get('/suppliers', [SupplierController::class, 'index']);
     Route::get('order-statuses', [OrderController::class, 'getStatuses']);
     Route::prefix('orders')->controller(OrderController::class)->group(function () {
         Route::get('search', 'search');
@@ -52,6 +53,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('split', 'split');
         Route::post('import', 'importMultipleOrders');
     });
+
     Route::get('merge-orders/stats', [MergeOrderController::class, 'stats']);
     Route::get('/merge-orders/{id}', [MergeOrderController::class, 'show']);
     Route::put('merge-orders/{id}', [MergeOrderController::class, 'update']);

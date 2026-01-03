@@ -482,20 +482,23 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
     console.log("ID gửi lên server:", mergeId);
     const result = await MySwal.fire({
       title: 'Hủy Đơn Gộp?',
-      html: `
-        <div class="text-left">
-            <p class="mb-3 text-sm text-gray-600 dark:text-gray-300">
-                Bạn có chắc chắn muốn xóa đơn gộp <b class="text-gray-900 dark:text-white">${mergeId}</b> không?
+     html: `
+    <div class="text-left">
+        <p class="mb-4 text-base text-gray-700 dark:text-gray-300">
+            Bạn có chắc chắn muốn xóa đơn gộp <b class="text-gray-900 dark:text-white font-bold">${mergeId}</b> không?
+        </p>
+        
+        <div class="p-4 rounded-xl border bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20">
+            <p class="text-sm font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                ⚠️ Lưu ý quan trọng:
             </p>
-            <div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg">
-                <p class="text-xs font-bold text-red-700 dark:text-red-400 mb-1">⚠️ Lưu ý hành động này:</p>
-                <ul class="list-disc pl-5 text-xs text-gray-600 dark:text-gray-300 space-y-1">
-                    <li>Đơn gộp <b>${mergeId}</b> sẽ bị xóa vĩnh viễn khỏi hệ thống.</li>
-                    <li>Các đơn PO con sẽ được trả về trạng thái <b>Chốt </b> để chờ xử lý lại.</li>
-                </ul>
-            </div>
+            <ul class="list-disc pl-5 text-sm text-red-800/80 dark:text-red-200/70 space-y-1">
+                <li>Đơn gộp <span class="font-semibold">${mergeId}</span> sẽ bị xóa vĩnh viễn.</li>
+                <li>Các đơn con sẽ được hoàn trả về trạng thái <span class="font-bold text-red-700 dark:text-red-400">Chốt</span>.</li>
+            </ul>
         </div>
-      `,
+    </div>
+`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33', // Màu đỏ cho hành động xóa
@@ -514,11 +517,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
           didOpen: () => MySwal.showLoading() 
       });
   
-      // 3. Gọi API trực tiếp (DELETE)
-      // Lưu ý: Route backend là: DELETE /api/orders/merge/{id}
       await api.delete(`/orders/merge/${mergeId}`);
   
-      // 4. Thông báo thành công
       await MySwal.fire(
         'Đã hủy!',
         'Đơn gộp đã được xóa thành công. Các PO đã quay về trạng thái Chốt.',

@@ -34,7 +34,10 @@ interface Product {
   status: string;
   categoryId: string | number;
 }
-// Trong OrderModal.tsx hoặc file types.ts nếu tách riêng
+interface Supplier {
+  code: string;
+  name: string;
+}
 export interface OrderPayload {
   orderDate: string;
   intended_use: string;
@@ -84,6 +87,8 @@ interface OrderModalProps {
   readOnly?: boolean;
 }
 const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnly = false }) => {
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -131,6 +136,34 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     };
     fetchStatuses();
   }, []);
+ useEffect(() => {
+    // Nếu chưa chọn ngành hàng thì không load, hoặc có thể load all tùy logic
+    // Ở đây mình ưu tiên load khi có ngành hàng để danh sách chính xác
+    const fetchSuppliersData = async () => {
+      try {
+        setLoadingSuppliers(true);
+        // Gọi API trực tiếp tại đây, truyền param industry
+        const res = await api.get('/suppliers', {
+          params: { 
+            industry: selectedCategoryId // Truyền ID ngành hàng (ví dụ: 18, 10...) backend sẽ xử lý
+          }
+        });
+        
+        // Giả sử API trả về { status: 'success', data: [...] } hoặc mảng trực tiếp
+        // Điều chỉnh tùy theo response thực tế của backend bạn viết
+        const supplierList = res.data.data || res.data || [];
+        setSuppliers(supplierList);
+
+      } catch (error) {
+        console.error("Lỗi tải nhà cung cấp:", error);
+        // Không cần toast lỗi quá gắt, chỉ log
+      } finally {
+        setLoadingSuppliers(false);
+      }
+    };
+
+    fetchSuppliersData();
+  }, [selectedCategoryId]);
   useEffect(() => {
     if (readOnly) return;
     const fetchProducts = async () => {
@@ -547,15 +580,49 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
               {/* Supplier */}
               <div>
                 <label className={labelClass}>Nhà cung cấp <span className="text-red-500">*</span></label>
-                <input
-                  name="supplier_name"
-                  value={formData.supplier_name}
-                  onChange={handleChange}
-                  disabled={readOnly}
-                  required
-                  placeholder="Nhập tên NCC..."
-                  className={inputClass}
-                />
+                
+                {/* Nếu đang ReadOnly thì hiện text cho đẹp */}
+                {readOnly ? (
+                  <input
+                    value={formData.supplier_name}
+                    disabled
+                    className={inputClass}
+                  />
+                ) : (
+                  <select
+                    name="supplier_name"
+                    value={formData.supplier_name}
+                    onChange={(e) => {
+                       // Logic: Cập nhật tên NCC vào state
+                       // Nếu cần lưu cả Code, bạn có thể tìm trong mảng suppliers
+                       setFormData(prev => ({ ...prev, supplier_name: e.target.value }));
+                    }}
+                    required
+                    disabled={readOnly} // Nếu không chọn ngành hàng thì disable luôn cũng được: disabled={readOnly || !selectedCategoryId}
+                    className={inputClass}
+                  >
+                    <option value="">-- Chọn Nhà cung cấp --</option>
+                    
+                    {loadingSuppliers ? (
+                        <option disabled>Đang tải...</option>
+                    ) : (
+                        suppliers.length > 0 ? (
+                           suppliers.map((sup) => (
+                             // Value là Name vì formData đang lưu Name. 
+                             // Hiển thị dạng: Tên (Mã)
+                             <option key={sup.code} value={sup.name}>
+                               {sup.name}
+                             </option>
+                           ))
+                        ) : (
+                           // Trường hợp không có dữ liệu hoặc chưa chọn ngành hàng
+                           <option disabled value="">
+                              {selectedCategoryId ? "Không tìm thấy NCC nào" : "Vui lòng chọn ngành hàng trước"}
+                           </option>
+                        )
+                    )}
+                  </select>
+                )}
               </div>
             </div>
 
