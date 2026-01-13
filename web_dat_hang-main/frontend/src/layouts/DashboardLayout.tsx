@@ -1,35 +1,35 @@
 import { useState, useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom'; // 👈 1. Import quan trọng
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
-import Footer from '../components/Footer';
-import DashboardContent from '../components/DashboardContent';
 import BackgroundEffects from '../components/BackgroundEffects';
-import ProductsPage from '../components/products/ProductsPage';
-import CustomersPage from '../components/customers/CustomersPage';
-import OrdersPage from '../components/orders/OrdersPage';
-import CategoriesPage from '../components/categories/CategoriesPage';
 import { Toaster } from 'react-hot-toast';
 
-
-export type Pagetype = 'dashboard' | 'orders' | 'customers' | 'products' | 'reports' | 'settings' | 'ordersMonthly' | 'ordersYearly' | 'productsCategories' | 'ordersMerged' | 'ordersCompleted';
-
 export default function DashboardLayout() {
+  const navigate = useNavigate();
+  
+  // Lấy user từ localStorage
   const storedUser = localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
 
-  const [currentPage, setCurrentPage] = useState<Pagetype>(() => {
-    if (['Sales', 'Supply'].includes(user.role)) return 'orders';
-    return 'ordersMerged';
-  });
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Check if mobile on mount and resize
+  // 2. Kiểm tra Auth ngay khi mount (Bảo mật)
+  useEffect(() => {
+    if (!user) {
+      // Nếu không tìm thấy user, đá về trang login
+      // Lưu ý: api.ts đã lo vụ hết hạn token, đây là check phụ
+      navigate('/login');
+    }
+  }, [user, navigate]);
+
+  // Check mobile responsive
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
       if (window.innerWidth < 768) {
-        setCollapsed(true); // Auto-collapse on mobile
+        setCollapsed(true); 
       }
     };
 
@@ -38,28 +38,7 @@ export default function DashboardLayout() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const renderCurrentPage = () => {
-    switch (currentPage) {
-      case 'products':
-        return <ProductsPage />;
-      case 'customers':
-        return <CustomersPage />;
-      case 'orders':
-        return <OrdersPage mode="normal" filterType='all_orders' />;
-      case 'ordersMerged':
-        return <OrdersPage mode='merged' filterType='merged_process' />
-      case 'ordersCompleted':
-        return <OrdersPage mode="merged" filterType='merged_completed' />;
-      case 'ordersYearly':
-        return <OrdersPage mode="yearly" />;
-      case 'productsCategories':
-        return <CategoriesPage />;
-      default:
-        return <DashboardContent />;
-    }
-  };
-
-  if (!user) return null;        // chưa đăng nhập → không render
+  if (!user) return null; 
 
   return (
     <>
@@ -69,34 +48,31 @@ export default function DashboardLayout() {
         toastOptions={{
           duration: 4000,
           style: {
-            background: '#1f2937', // màu nền toast: gray-800
-            color: '#fff',         // màu chữ
-            borderRadius: '8px',
+            background: '#1f2937', 
+            color: '#fff',
+            borderRadius: '12px', // Bo góc đẹp hơn chút
             padding: '12px 16px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
           },
           success: {
-            iconTheme: {
-              primary: '#10b981', // xanh lá - giống nút create
-              secondary: '#d1fae5',
-            },
+            iconTheme: { primary: '#10b981', secondary: '#d1fae5' },
           },
           error: {
-            iconTheme: {
-              primary: '#ef4444', // đỏ
-              secondary: '#fee2e2',
-            },
+            iconTheme: { primary: '#ef4444', secondary: '#fee2e2' },
           },
         }}
       />
-<div className="min-h-screen relative overflow-hidden bg-gray-50 dark:bg-slate-950 transition-colors duration-300">        
-  <BackgroundEffects />
-<div className="relative z-10 flex flex-col min-h-screen">          
-  <Header
+
+      {/* Container chính: Màu nền lấy từ index.css hoặc fallback */}
+      <div className="min-h-screen relative overflow-hidden transition-colors duration-300">        
+        <BackgroundEffects />
+        
+        <div className="relative z-10 flex flex-col min-h-screen">          
+          <Header
             user={user}
             onToggleSidebar={() => setCollapsed(!collapsed)}
             sidebarCollapsed={collapsed}
-            onPageChange={setCurrentPage}
+            // onPageChange={setCurrentPage} -> ❌ Đã xóa prop này
           />
 
           <div className="flex flex-1 pt-4 relative">
@@ -104,27 +80,26 @@ export default function DashboardLayout() {
               collapsed={collapsed}
               userRole={user.role}
               userDepartment={user.department}
-              currentPage={currentPage}
-              onPageChange={setCurrentPage}
               isMobile={isMobile}
+              
             />
-           <main 
+            
+            <main 
               className={`flex-1 transition-all duration-300 overflow-y-auto ${
                 isMobile 
                   ? 'ml-0 w-full' 
                   : collapsed 
-                    ? 'ml-20'  // 👈 Sửa từ ml-16 thành ml-20
+                    ? 'ml-20'  
                     : 'ml-64'
               }`}
             >
               <div className="p-4 sm:p-6 pb-20 animate-fade-in">
-                {renderCurrentPage()}
+                {/* 👇 3. OUTLET: Nơi React Router sẽ tự động điền các trang con vào */}
+                {/* (OrdersPage, MyOrdersPage, ProductsPage...) */}
+                <Outlet />
               </div>
             </main>
           </div>
-          {/* <div className="relative z-30 ">
-            <Footer />
-          </div> */}
         </div>
       </div>
     </>

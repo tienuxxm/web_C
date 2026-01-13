@@ -12,21 +12,33 @@ class Order extends Model
 {
 
     // Kết nối APIDB
-    protected $connection = 'sqlsrv'; 
-    protected $table = 'dbo.API$Purchase Header'; 
+    protected $connection = 'sqlsrv';
+    protected $table = 'dbo.API$Purchase Header';
     protected $primaryKey = 'DocumentNo'; // Khóa chính là DocumentNo
-    public $incrementing = false; 
+    public $incrementing = false;
     protected $keyType = 'string';
     public $timestamps = false; // Bảng này dùng CreatedDate, không dùng created_at/updated_at chuẩn
 
     protected $fillable = [
-    'DocumentNo', 'PostingDate', 'ShipmentDate', 'Industry', 'IntendedUse', 
-    'Supplier', 'Status', 'Note', 'NoteSupply', 'NoteManager',
-    'CreatedBy', 'CreatedDate',
-    'ModifiedBy', 'ModifiedDate',
-    'ModifiedSupplyBy', 'ModifiedSupplyDate',
-    'ModifiedManagerBy', 'ModifiedManagerDate'
-];
+        'DocumentNo',
+        'PostingDate',
+        'ShipmentDate',
+        'Industry',
+        'IntendedUse',
+        'Supplier',
+        'Status',
+        'Note',
+        'NoteSupply',
+        'NoteManager',
+        'CreatedBy',
+        'CreatedDate',
+        'ModifiedBy',
+        'ModifiedDate',
+        'ModifiedSupplyBy',
+        'ModifiedSupplyDate',
+        'ModifiedManagerBy',
+        'ModifiedManagerDate'
+    ];
 
     // Quan hệ: Items hiện tại
     public function items()
@@ -39,14 +51,26 @@ class Order extends Model
     {
         return $this->belongsTo(User::class, 'CreatedBy', 'code'); // Map theo cột code trong bảng users
     }
+    public function supplyUser()
+    {
+        return $this->belongsTo(User::class, 'ModifiedSupplyBy', 'code');
+    }
+
+    public function managerUser()
+    {
+        return $this->belongsTo(User::class, 'ModifiedManagerBy', 'code');
+    }
+
+    public function modifierUser()
+    {
+        return $this->belongsTo(User::class, 'ModifiedBy', 'code');
+    }
     public function statusInfo()
     {
-        // Quan hệ 1-1 với bảng Status dựa trên cột 'Type'
-        // Lưu ý: Phải filter thêm cột 'Table' = 'Order Purchasing'
-        return $this->belongsTo(OrderStatus::class, 'Status', 'Type','Name');
+        return $this->belongsTo(OrderStatus::class, 'Status', 'Type', 'Name');
     }
     public function getStatusNameAttribute()
     {
-        return $this->statusInfo ;
+        return $this->statusInfo;
     }
 }

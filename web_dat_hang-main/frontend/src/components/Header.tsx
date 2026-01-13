@@ -55,19 +55,19 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar}) => {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const res = await api.get('/notifications');
-        const notiList = res.data.notifications || [];
-        setNotifications(notiList);
-      } catch (error) {
-        console.error('Lỗi khi lấy thông báo:', error);
-      }
-    };
+  // useEffect(() => {
+  //   const fetchNotifications = async () => {
+  //     try {
+  //       const res = await api.get('/notifications');
+  //       const notiList = res.data.notifications || [];
+  //       setNotifications(notiList);
+  //     } catch (error) {
+  //       console.error('Lỗi khi lấy thông báo:', error);
+  //     }
+  //   };
 
-    fetchNotifications();
-  }, []);
+  //   fetchNotifications();
+  // }, []);
 
   const handleToggleNotifications = async () => {
     const nextState = !showNotifications;
@@ -104,9 +104,8 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar}) => {
     try {
       const response = await api.post('/admin/send-reminders',{force:true});
 
-      toast.dismiss(loadingToastId); // Tắt loading
+      toast.dismiss(loadingToastId); 
 
-      // Hiển thị thông báo thành công bằng Swal
       Swal.fire({
         title: 'Thành công!',
         text: response.data.message || 'Đã gửi mail nhắc nhở xong.',
@@ -116,8 +115,7 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar}) => {
       });
 
     } catch (error: any) {
-      // 5. Thất bại
-      toast.dismiss(loadingToastId); // Tắt loading
+      toast.dismiss(loadingToastId); 
 
       const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra khi gửi mail.';
 
@@ -142,7 +140,7 @@ const Header: React.FC<HeaderProps> = ({ user, onToggleSidebar}) => {
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30">
             <img
-              src="public/assets/Bitex_logo.png"
+              src="/web_dat_hang-main/public/assets/Bitex_logo.png"
               alt="BITEX"
               className="h-6 sm:h-8 w-auto"
             />

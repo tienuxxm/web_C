@@ -16,9 +16,12 @@ class MergeOrderController extends Controller
     {
         try {
             $order = MergeOrder::with([
+                'user',
                 'items.product',
                 'statusInfo',
-                'originalOrderItems.order'
+                'originalOrderItems.order',
+                'managerUser',
+                'modifierUser',
             ])
                 ->where('DocumentNo', $id)
                 ->firstOrFail();
@@ -26,6 +29,54 @@ class MergeOrderController extends Controller
             $subtotal = $order->items->sum(function ($item) {
                 return $item->Quantity * $item->Price;
             });
+            $history = [];
+            if (!empty($order->Note)) {
+                $history[] = [
+                    'name' =>  $order->user->name ??'',
+                    'content' => $order->Note,
+                    'time' => $order->ModifiedDate
+                ];
+            }
+            // 2. Note của Supply
+            if (!empty($order->NoteSupply)) {
+                $history[] = [
+                    'name' => $order->supplyUser->name ??'',
+                    'content' => $order->NoteSupply,
+                    'time' => $order->ModifiedSupplyDate
+                ];
+            }
+
+            // 3. Note của Leader
+            if (!empty($order->NoteManager)) {
+                $history[] = [
+                    'name' => $order->managerUser->name ??'',
+                    'content' => $order->NoteManager,
+                    'time' => $order->ModifiedManagerDate
+                ];
+            }
+
+            usort($history, function ($a, $b) {
+                return strtotime($a['time']) - strtotime($b['time']);
+            });
+
+            $sourcePOs = collect();
+
+            // Duyệt qua các items để tìm ra danh sách các PO cha duy nhất
+            foreach ($order->originalOrderItems as $line) {
+                if ($line->order) {
+                    // Dùng DocumentNo làm key để không bị trùng lặp
+                    if (!$sourcePOs->has($line->order->DocumentNo)) {
+                        $sourcePOs->put($line->order->DocumentNo, [
+                            'po_number' => $line->order->DocumentNo,
+                            'note'      => $line->order->Note, // Note gốc của PO
+                            'user'      => $line->order->user->name ?? $line->order->CreatedBy, // Người tạo PO
+                            'created_at' => $line->order->CreatedDate
+                        ]);
+                    }
+                }
+            }
+            // Chuyển về dạng mảng index (bỏ key)
+            $poDetails = $sourcePOs->values()->all();
 
             $supplierName = 'N/A';
             $intendedUse  = 'Gộp đơn';
@@ -48,14 +99,22 @@ class MergeOrderController extends Controller
                 'subtotal'           => $subtotal,
                 'total_amount'       => $subtotal,
                 'industry_id'        => $order->Industry,
+                'note_history'          => $history,
                 'created_by'            => $order->CreatedBy,
                 'created_date'          => $order->CreatedDate,
+                'created_name'          => $order->user->name,
                 'note'                  => $order->Note,
+                'source_orders'         => $poDetails,
                 'modified_by'           => $order->ModifiedBy,
                 'modified_date'         => $order->ModifiedDate,
+                'modified_by_name'      => $order->modifierUser->name ?? '',
+
+
                 'note_manager'          => $order->NoteManager,
                 'modified_manager_by'   => $order->ModifiedManagerBy,
                 'modified_manager_date' => $order->ModifiedManagerDate,
+                'modified_manager_name'    => $order->managerUser->name ?? '',
+
                 'items' => $order->items->map(function ($item) {
                     $erpPrice =  $item->product;
                     return [
@@ -78,6 +137,7 @@ class MergeOrderController extends Controller
                         ],
                         'line_modified_by'           => $item->ModifiedBy,
                         'line_modified_date'         => $item->ModifiedDate,
+
                         'line_modified_manager_by'   => $item->ModifiedManagerBy,
                         'line_modified_manager_date' => $item->ModifiedManagerDate,
                     ];
@@ -101,39 +161,32 @@ class MergeOrderController extends Controller
         if ($newStatus === $currentStatus) {
             return response()->json(['message' => 'Bạn chưa cập nhật trạng thái đơn hàng.'], 422);
         }
-
-        // 1. GỌI POLICY
         if ($user->cannot('updateStatus', [$order, $newStatus])) {
             return response()->json([
                 'message' => "Bạn không có quyền chuyển từ trạng thái [$currentStatus] sang [$newStatus]."
             ], 403);
         }
 
-        // 2. CHUẨN BỊ DỮ LIỆU (Mapping cột theo DB mới)
         $now = now();
         $userCode = $user->code;
 
         $headerUpdateData = ['Status' => $newStatus];
         $lineUpdateData   = ['Status' => $newStatus];
 
-        // --- A. NHÓM LÃNH ĐẠO (LEADER / MANAGER) ---
-        if ($user->isRole('Leader') || $user->isRole('Manage')) {
-            // Header
+        if ($user->isRole('Leader')) {
             $headerUpdateData['ModifiedManagerBy']   = $userCode;
             $headerUpdateData['ModifiedManagerDate'] = $now;
-            // Leader ghi chú vào cột NoteManager
-            if ($request->has('notes')) {
-                $headerUpdateData['NoteManager'] = $request->notes;
+            if ($request->has('note_manager')) {
+                $headerUpdateData['NoteManager'] = $request->note_manager;
             }
-
             // Line
             $lineUpdateData['ModifiedManagerBy']   = $userCode;
             $lineUpdateData['ModifiedManagerDate'] = $now;
         } else {
             $headerUpdateData['ModifiedBy']   = $userCode;
             $headerUpdateData['ModifiedDate'] = $now;
-            if ($request->has('notes')) {
-                $headerUpdateData['Note'] = $request->notes;
+            if ($request->has('note_supply')) {
+                $headerUpdateData['Note'] = $request->note_supply;
             }
             $lineUpdateData['ModifiedBy']   = $userCode;
             $lineUpdateData['ModifiedDate'] = $now;
@@ -290,87 +343,72 @@ class MergeOrderController extends Controller
     public function getDistribution($id)
     {
         try {
-            // 1. Lấy dòng hàng trong đơn gộp
             $mergeItem = MergeOrderItem::findOrFail($id);
 
             $sourceIds = array_filter(explode('-', $mergeItem->PurchaseLineID));
-
-            if (empty($sourceIds)) {
-                return response()->json(['message' => 'Sản phẩm này được thêm thủ công.'], 200);
-            }
+            if (empty($sourceIds)) return response()->json(['message' => 'Sản phẩm thêm thủ công.'], 200);
 
             $originalItems = \App\Models\OrderItem::with(['order.user'])
                 ->whereIn('ID', $sourceIds)
                 ->get();
-
-            // --- 👇 SỬA ĐOẠN NÀY (QUAN TRỌNG) ---
-            // Tính tổng nhu cầu dựa trên QuantityOld (Sales yêu cầu)
-            // Dùng fallback ?? 0 đề phòng dữ liệu cũ null
-            $totalDemand = $originalItems->sum('QuantityOld');
-
-            $supplyQty   = $mergeItem->Quantity; // Số thực tế Supply chốt trên đơn Gộp
+            $totalApprovedWeight = $originalItems->sum(function ($item) {
+                return ($item->Quantity > 0) ? $item->Quantity : 0;
+            });
+            $actualSupplyQty = $mergeItem->Quantity;
+            $ratio = ($totalApprovedWeight > 0) ? ($actualSupplyQty / $totalApprovedWeight) : 0;
 
             $distribution = [];
+            $totalSurplus = 0;
 
-            // Kịch bản 1: Hàng về ĐỦ hoặc DƯ
-            if ($supplyQty >= $totalDemand) {
-                foreach ($originalItems as $item) {
-                    // Lấy đúng số Sales yêu cầu
-                    $reqQty = (float)($item->QuantityOld ?? $item->Quantity);
+            foreach ($originalItems as $item) {
+                $requested = (float)$item->QuantityOld;
+                $approved  = (float)$item->Quantity;
 
-                    $distribution[] = [
-                        'po_number'    => $item->DocumentNo,
-                        'sales_name'   => $item->order->user->name ?? $item->CreatedBy,
+                $rawAllocated = $approved * $ratio;
 
-                        'requested'    => $reqQty, // ✅ Hiển thị số Sales muốn (100)
-                        'allocated'    => $reqQty, // ✅ Chia đủ (100)
-                        'note'         => 'Đủ hàng'
-                    ];
+
+                if ($rawAllocated > $requested) {
+                    $finalAllocated = $requested;
+                    $surplus = $rawAllocated - $requested;
+                    $totalSurplus += $surplus;
+                    $note = 'Đủ hàng (Dư ' . $surplus . ' chuyển kho)';
+                } else {
+                    $finalAllocated = $rawAllocated;
+                    $note = ($finalAllocated < $requested) ? 'Thiếu hàng' : 'Đủ hàng';
                 }
-                // Phần dư ra
-                $remainder = $supplyQty - $totalDemand;
-                if ($remainder > 0) {
-                    $distribution[] = [
-                        'po_number'    => 'KHO_DU_TRU',
-                        'sales_name'   => 'Kho / Cung ứng',
-                        'requested'    => 0,
-                        'allocated'    => $remainder,
-                        'note'         => 'Hàng dư nhập kho'
-                    ];
-                }
+
+                $distribution[] = [
+                    'po_number'    => $item->DocumentNo,
+                    'sales_name'   => $item->order->user->name ?? $item->CreatedBy,
+                    'requested'    => $requested,
+                    'approved'     => $approved,
+                    'allocated'    => (float)$finalAllocated,
+                    'note'         => $note
+                ];
             }
-            // Kịch bản 2: Thiếu hàng -> Chia tỷ lệ
-            else {
-                $ratio = ($totalDemand > 0) ? ($supplyQty / $totalDemand) : 0;
+            $totalAllocatedToSales = array_sum(array_column($distribution, 'allocated'));
 
-                // Debug (nếu cần): 550 / 300 = 1.83 (Trường hợp này ko xảy ra vì rơi vào if trên)
-                // Ví dụ Supply chỉ có 200 / Demand 300 => Ratio 0.66
+            $finalInventory = $actualSupplyQty - $totalAllocatedToSales;
 
-                foreach ($originalItems as $index => $item) {
-                    $reqQty = (float)($item->QuantityOld ?? $item->Quantity);
-
-                    $allocated = $reqQty * $ratio;
-
-                    $distribution[] = [
-                        'po_number'    => $item->DocumentNo,
-                        'sales_name'   => $item->order->user->name ?? $item->CreatedBy,
-
-                        'requested'    => $reqQty, // ✅ Hiển thị số Sales muốn
-                        'allocated'    => (float)$allocated,
-                        'note'         => 'Thiếu hàng (Cắt giảm)'
-                    ];
-                }
+            if ($finalInventory > 0.0001) {
+                $distribution[] = [
+                    'po_number'    => 'KHO_DU_TRU',
+                    'sales_name'   => 'Kho / Cung ứng',
+                    'requested'    => 0,
+                    'allocated'    => (float)$finalInventory,
+                    'note'         => 'Hàng dư nhập kho'
+                ];
             }
 
             return response()->json([
                 'product_name' => $mergeItem->ItemName,
-                'total_supply' => $supplyQty,
-                'total_demand' => $totalDemand,
-                'status'       => ($supplyQty >= $totalDemand) ? 'sufficient' : 'shortage',
+                'total_supply' => $actualSupplyQty,
+                'total_demand' => $originalItems->sum('QuantityOld'),
+                'status'       => 'calculated',
                 'distribution' => $distribution
             ]);
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Lỗi tính toán: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Lỗi: ' . $e->getMessage()], 500);
         }
     }
 }

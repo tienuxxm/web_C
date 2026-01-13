@@ -31,4 +31,5 @@ class MergeOrderItem extends Model
         // Liên kết với bảng Product qua ItemCode (giả sử Product dùng cột Code làm khóa chính)
         return $this->belongsTo(Product::class, 'ItemCode', 'Code');
     }
+    
 }

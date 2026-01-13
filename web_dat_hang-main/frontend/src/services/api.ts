@@ -9,7 +9,7 @@ baseURL: basePath === '/' ? '/api' : `${basePath}api`,  headers: {
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token'); // Hoặc lấy từ nơi bạn lưu token
+    const token = localStorage.getItem('token'); 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -19,20 +19,21 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   (error) => {
-    // Nếu API trả về lỗi
-    if (error.response && error.response.status === 401) {
-      console.warn('Phiên đăng nhập hết hạn. Đang đăng xuất...');
+    const status = error.response ? error.response.status : null;
 
+    if (status === 401) {
+      console.warn('Phiên đăng nhập hết hạn.');
       localStorage.removeItem('user');
       localStorage.removeItem('token');
-      
-      if (window.location.pathname !== '/login') {
-         window.location.href = '/login';
+
+      const basePath = import.meta.env.VITE_BASE_PATH; 
+      const loginUrl = `${basePath}login`.replace('//', '/');
+      if (window.location.pathname !== loginUrl) {
+         window.location.href = loginUrl;
       }
+      return Promise.reject(error);
     }
     
     return Promise.reject(error);

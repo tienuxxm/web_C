@@ -4,20 +4,20 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
-      // 👇 1. THÊM BỘ MÀU CHUẨN BITEX
       colors: {
         bitex: {
           primary: '#0054A6',   // Xanh Navy Chính
           secondary: '#003D7A', // Xanh Đậm (Hover)
           accent: '#ED1C24',    // Đỏ (Nút/Badge)
-          neutral: '#dae1efff',   // Xám nhạt (Nền Light)
-          dark: '#0F172A',      // Xanh Đen (Nền Dark - QUAN TRỌNG CHO GLASS)
+          neutral: '#d1dcf2ff',   // Xám nhạt (Nền Light)
+          dark: '#131f39ff',      // Xanh Đen (Nền Dark )
         }
       },
       // 👇 2. THÊM HIỆU ỨNG BÓNG ĐỔ (GLOW)
       boxShadow: {
-        'glass-light': '0 8px 32px 0 rgba(0, 84, 166, 0.10)', // Bóng xanh nhẹ cho Light mode
-        'glass-dark': '0 8px 32px 0 rgba(0, 0, 0, 0.6)',      // Bóng đen sâu cho Dark mode
+       'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+        'glass-light': '0 4px 6px -1px rgba(0, 84, 166, 0.05), 0 2px 4px -1px rgba(0, 84, 166, 0.03)',
+        'glass-dark': '0 10px 40px -10px rgba(0, 0, 0, 0.7)',     
       },
       animation: {
         'fade-in-up': 'fadeInUp 0.3s ease-out',

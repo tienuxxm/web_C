@@ -15,8 +15,7 @@ use App\Models\Category;
 use App\Models\OrderOriginal;
 use App\Models\MergeOrder;
 use App\Models\MergeOrderItem;
-
-
+use App\Policies\OrderPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
@@ -45,7 +44,7 @@ class OrderController extends Controller
         $this->authorize('create', Order::class);
         $request->validate([
             'industry_id'   => 'required',
-            'supplier_name' => 'required|string',
+            'supplier_name' => 'nullable|string',
             'intended_use'  => 'required|string',
             'orderDate'     => 'required|date',
             'estimated_delivery' => 'required|date',
@@ -74,13 +73,12 @@ class OrderController extends Controller
                 'ShipmentDate' => $request->estimated_delivery,
                 'Industry'     => $request->industry_id,
                 'IntendedUse'  => $request->intended_use,
-                'Supplier'     => $request->supplier_name,
+                'Supplier'     => $request->supplier_name ?? '',
                 'Status'       => 1,
                 'Note'         => $request->notes ?? '',
                 'CreatedBy'    => $user->code,
                 'CreatedDate'  => now(),
             ]);
-            // 4. Insert Items
             foreach ($request->items as $index => $itemData) {
                 $inputQty = (float)$itemData['quantity_old'];
                 $quantity    = $inputQty;
@@ -134,12 +132,9 @@ class OrderController extends Controller
         if (!$order) {
             return response()->json(['message' => 'Không tìm thấy đơn hàng'], 404);
         }
-        // Check quyền cơ bản (Sở hữu / Admin)
         $this->authorize('update', $order);
-
         $currentStatus = (int)$order->Status;
         $inputStatus   = (int)$request->input('status');
-        // 1. DÙNG POLICY CHECK QUYỀN CHUYỂN TRẠNG THÁI
         if ($inputStatus !== $currentStatus) {
             if ($user->cannot('updateStatus', [$order, $inputStatus])) {
                 return response()->json([
@@ -147,32 +142,37 @@ class OrderController extends Controller
                 ], 403);
             }
         } else {
-            // Check quyền lưu nháp (không đổi status)
             $canSaveDraft = ($user->isRole('Sales') || $user->isInDepartment('IT')) && $currentStatus == 1;
             if (!$canSaveDraft) {
                 return response()->json(['message' => 'Trạng thái không đổi và bạn không có quyền lưu nháp.'], 422);
             }
         }
-        // Validate Note bắt buộc khi Hủy/Điều chỉnh
-        if (in_array($inputStatus, [10, 5]) && empty($request->notes)) {
+
+        // if ($user->isRole('Supply')) {
+        //     $finalSupplier = $request->supplier_name ?? $order->Supplier;
+
+        //     if (empty($finalSupplier)) {
+        //         return response()->json([
+        //             'message' => 'Lỗi: Cung ứng bắt buộc phải nhập thông tin Nhà cung cấp.'
+        //         ], 422);
+        //     }
+        // }
+
+        if (in_array($inputStatus, [10, 5]) && empty($request->notes || $request->note_supply || $request->note_manager)) {
             return response()->json(['message' => 'Bắt buộc nhập lý do vào ô Ghi chú.'], 422);
         }
-        // 2. CHUẨN BỊ DỮ LIỆU & ĐIỀN CÁC CỘT MODIFIED
         $now = now();
         $userCode = $user->code;
         $updateData = [
             'PostingDate'  => $request->orderDate,
             'ShipmentDate' => $request->estimated_delivery,
-            'Supplier'     => $request->supplier_name,
+            'Supplier'     => $request->supplier_name ?? '',
             'IntendedUse'  => $request->intended_use,
             'Status'       => $inputStatus,
             'Note'         => $request->notes ?? $order->Note,
-
-            // Luôn cập nhật người sửa cuối cùng (bất kể role nào)
             'ModifiedBy'   => $userCode,
             'ModifiedDate' => $now,
         ];
-        // --- Logic riêng theo Role để điền cột Supply/Manager ---
         if ($user->isRole('Supply') || $user->isInDepartment('Cung ứng')) {
             $updateData['ModifiedSupplyBy']   = $userCode;
             $updateData['ModifiedSupplyDate'] = $now;
@@ -186,12 +186,9 @@ class OrderController extends Controller
                 $updateData['NoteManager'] = $request->note_manager;
             }
         }
-        // 3. THỰC HIỆN UPDATE
         DB::connection('sqlsrv')->beginTransaction();
         try {
-            // A. Update Header
             $order->update($updateData);
-            // B. Update Items 
             if ($inputStatus !== 5) { // 5 = Hủy
                 if ($user->can('editItems', $order)) {
                     // Xóa cũ
@@ -227,7 +224,7 @@ class OrderController extends Controller
                             'QuantityOld' => $quantityOld,
                             'Price'       => $price,
                             'Status'      => $inputStatus,
-                            'CreatedBy'   => $order->CreatedBy,   // Lấy lại người tạo của đơn hàng gốc
+                            'CreatedBy'   => $order->CreatedBy,
                             'CreatedDate' => $order->CreatedDate,
                             'ModifiedBy'   => $userCode,
                             'ModifiedDate' => $now,
@@ -245,6 +242,7 @@ class OrderController extends Controller
             return response()->json(['message' => 'Lỗi cập nhật: ' . $e->getMessage()], 500);
         }
     }
+
     public function index(Request $request)
     {
         try {
@@ -444,11 +442,41 @@ class OrderController extends Controller
     public function show($id)
     {
         try {
-            $order = Order::with(['user', 'statusInfo', 'items.product'])
+            $order = Order::with(['user', 'statusInfo', 'items.product', 'supplyUser', 'managerUser', 'modifierUser',])
                 ->where('DocumentNo', $id)
                 ->firstOrFail();
+
             $subtotal = $order->items->sum(function ($item) {
                 return $item->Quantity * $item->Price;
+            });
+            $history = [];
+            if (!empty($order->Note)) {
+                $history[] = [
+                    'name' =>  $order->user->name ?? '',
+                    'content' => $order->Note,
+                    'time' => $order->ModifiedDate
+                ];
+            }
+            // 2. Note của Supply
+            if (!empty($order->NoteSupply)) {
+                $history[] = [
+                    'name' => $order->supplyUser->name ?? '',
+                    'content' => $order->NoteSupply,
+                    'time' => $order->ModifiedSupplyDate
+                ];
+            }
+
+            // 3. Note của Leader
+            if (!empty($order->NoteManager)) {
+                $history[] = [
+                    'name' => $order->managerUser->name ?? '',
+                    'content' => $order->NoteManager,
+                    'time' => $order->ModifiedManagerDate
+                ];
+            }
+
+            usort($history, function ($a, $b) {
+                return strtotime($a['time']) - strtotime($b['time']);
             });
             $formattedOrder = [
                 'id' => $order->ID,
@@ -457,7 +485,24 @@ class OrderController extends Controller
                 'intended_use' => $order->IntendedUse,
                 'status' => (int)$order->Status,
                 'status_name' =>  $order->statusInfo->Name,
-                'order_date' => $order->PostingDate, // Hoặc CreatedDate
+                'order_date' => $order->PostingDate,
+                'note_history' => $history,
+
+                'created_by'            => $order->CreatedBy,
+                'created_date'          => $order->CreatedDate,
+                'created_name'          => $order->user->name,
+
+                'modified_supply_by'    => $order->ModifiedSupplyBy,
+                'modified_supply_date'  => $order->ModifiedSupplyDate,
+                'modified_supply_name'  => $order->supplyUser->name ?? '',
+                'note_supply'           => $order->NoteSupply,
+
+                'modified_manager_by'   => $order->ModifiedManagerBy,
+                'modified_manager_date' => $order->ModifiedManagerDate,
+                'note_manager'          => $order->NoteManager,
+
+                'modified_by'           => $order->ModifiedBy,
+                'modified_date'         => $order->ModifiedDate,
                 'estimated_delivery' => $order->ShipmentDate,
                 'notes' => $order->Note,
                 'subtotal' => $subtotal,
@@ -476,7 +521,6 @@ class OrderController extends Controller
                         'quantity_old' => (float)$item->QuantityOld,
                         'unit_price' => (float)$item->Price,
                         'erp_price' => $erpPrice,
-
                         'unit' => $item->Unit,
                         'total' => (float)($item->Quantity * $item->Price),
                         'product' => [
@@ -514,12 +558,12 @@ class OrderController extends Controller
         $firstOrder = $orders->first();
         $supplier = $firstOrder->Supplier;
         $industry = $firstOrder->Industry;
-        $existingMerges = MergeOrder::where('Status', 8) 
+        $existingMerges = MergeOrder::where('Status', 8)
             ->where('Industry', $industry)
             ->whereHas('originalOrderItems.order', function ($q) use ($supplier) {
                 $q->where('Supplier', $supplier);
             })
-            ->withCount('items') 
+            ->withCount('items')
             ->orderBy('CreatedDate', 'desc')
             ->get(['DocumentNo', 'PostingDate', 'Note', 'CreatedDate']);
 
@@ -550,7 +594,7 @@ class OrderController extends Controller
 
         DB::connection('sqlsrv')->beginTransaction();
         try {
-           
+
             $timestamps = $orders->map(function ($o) {
                 return \Carbon\Carbon::parse($o->ShipmentDate)->timestamp;
             })->toArray();
@@ -567,8 +611,6 @@ class OrderController extends Controller
             $avgTimestamp = array_sum($timestamps) / count($timestamps);
             $avgShipmentDate = \Carbon\Carbon::createFromTimestamp($avgTimestamp);
 
-            // Xử lý Note
-            $notesFromOrders = $orders->pluck('Note')->filter()->implode('; ');
 
             $mergeOrder = null;
 
@@ -579,7 +621,6 @@ class OrderController extends Controller
                 // Cập nhật Header
                 $mergeOrder->update([
                     'ShipmentDate' => $avgShipmentDate, // Cập nhật ngày trung bình mới
-                    'Note'         => $mergeOrder->Note . " | Gộp thêm: " . implode(', ', $orderIds) . ". " . $notesFromOrders,
                     'ModifiedBy'   => $user->code,
                     'ModifiedDate' => now(),
                 ]);
@@ -591,15 +632,14 @@ class OrderController extends Controller
                 $nextNum = $lastMerge ? intval(substr($lastMerge->DocumentNo, -4)) + 1 : 1;
                 $newDocumentNo = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
 
-                $finalNote = "Gộp từ: " . implode(', ', $orderIds) . ". " . $notesFromOrders;
 
                 $mergeOrder = MergeOrder::create([
                     'DocumentNo'   => $newDocumentNo,
                     'PostingDate'  => now(),
-                    'ShipmentDate' => $avgShipmentDate, // Ngày trung bình
+                    'ShipmentDate' => $avgShipmentDate,
                     'Industry'     => $orders->first()->Industry,
-                    'Status'       => OrderStatus::TYPE_MERGE, // 8
-                    'Note'         => $finalNote,
+                    'Status'       => OrderStatus::TYPE_MERGE,
+                    'Note'         => null,
                     'CreatedBy'    => $user->code,
                     'CreatedDate'  => now(),
                 ]);
@@ -709,11 +749,7 @@ class OrderController extends Controller
             $query->where('Status', $status);
         }
 
-        // Bạn có thể thêm logic lọc theo User/Phòng ban nếu cần thiết
-        // if (!$user->isManager()) { ... }
 
-        // Pluck chỉ lấy ra mảng các giá trị của cột DocumentNo
-        // Kết quả: ['PO001', 'PO002', 'PO003', ...]
         $ids = $query->pluck('DocumentNo');
 
         return response()->json($ids);
@@ -1065,12 +1101,12 @@ class OrderController extends Controller
 
             // 2. Lấy danh sách các dòng đơn con đang liên kết
             $childItems = OrderItem::where('MergeHeaderID', $id)->get();
-            
+
             // Lấy danh sách mã đơn PO cha (unique)
             $poDocumentNos = $childItems->pluck('DocumentNo')->unique()->toArray();
 
             // 3. Reset các dòng đơn con (OrderItems)
-           OrderItem::where('MergeHeaderID', $id)
+            OrderItem::where('MergeHeaderID', $id)
                 ->update([
                     'MergeHeaderID' => null, // Gỡ liên kết
                     'Status'        => 7,    // Quay về trạng thái Chốt
@@ -1095,10 +1131,174 @@ class OrderController extends Controller
             DB::connection('sqlsrv')->commit();
 
             return response()->json(['message' => 'Đã hủy đơn gộp và trả lại trạng thái cho các đơn PO.'], 200);
-
         } catch (\Exception $e) {
             DB::connection('sqlsrv')->rollBack();
             return response()->json(['message' => 'Lỗi hủy đơn: ' . $e->getMessage()], 500);
+        }
+    }
+    // app/Http/Controllers/OrderController.php
+
+    /**
+     * API Lịch sử đơn hàng dành cho User
+     * GET /api/orders/history
+     */
+    public function history(Request $request)
+    {
+        try {
+            $user = JWTAuth::user();
+            $limit = $request->get('limit', 6);
+            $type = $request->get('type', 'PO'); // PO hoặc MP
+
+            // ---------------------------------------------------------
+            // 1. LOGIC LẤY DANH SÁCH PO (Purchase Orders)
+            // ---------------------------------------------------------
+            if ($type === 'PO') {
+                $query = Order::with(['statusInfo', 'items.mergeOrder.statusInfo']) 
+                    ->orderBy('CreatedDate', 'desc');
+
+                // Filter tìm kiếm
+                if ($request->has('q')) {
+                    $q = $request->q;
+                    $query->where('DocumentNo', 'like', "%{$q}%");
+                }
+                
+                // Filter trạng thái
+                if ($request->has('status')) {
+                    $query->where('Status', $request->status);
+                }
+
+                $orders = $query->paginate($limit);
+
+                // Transform dữ liệu
+                $data = $orders->getCollection()->map(function ($order) {
+                    $linkedMergeOrder = null;
+                    $realStatusName = $order->statusInfo->Name ?? 'Unknown';
+                    $realDeliveryDate = $order->ShipmentDate;
+                    
+                    // Logic tìm đơn gộp cha (MP)
+                    $firstItem = $order->items->first();
+                    if ($firstItem && $firstItem->mergeOrder) {
+                        $linkedMergeOrder = $firstItem->mergeOrder;
+                        
+                        // Nếu PO đang là trạng thái GỘP (8), hiển thị thông tin theo đơn cha
+                        if ($order->Status == 8) {
+                            $realStatusName = "Gộp: " . ($linkedMergeOrder->statusInfo->Name ?? 'Đang xử lý');
+                            $realDeliveryDate = $linkedMergeOrder->ShipmentDate; 
+                        }
+                    }
+
+                    // --- LOGIC MAPPING TRACKING STEP CHO PO ---
+                    $statusId = (int)$order->Status;
+                    $trackingStep = 1;
+                    // Nhóm Mới
+                    if (in_array($statusId, [1])) { 
+                        $trackingStep = 1; 
+                    } 
+                    // Nhóm Chốt (Chờ Supply xử lý/Gộp)
+                    elseif (in_array($statusId, [7, 10])) { 
+                        $trackingStep = 2; 
+                    } 
+                    // Nhóm Đã Gộp (8) -> Check tiến độ của MP cha
+                    elseif ($statusId == 8) {
+                        $trackingStep = 3; // Mặc định là đã gộp (Processing)
+                        if ($linkedMergeOrder) {
+                            $mpStatus = (int)$linkedMergeOrder->Status;
+                            if ($mpStatus == 4) $trackingStep = 4; // MP đang đặt hàng
+                            if ($mpStatus == 11) $trackingStep = 5; // MP hoàn thành
+                            if ($mpStatus == 5) $trackingStep = -1; // MP đã hủy/
+                            if ($mpStatus == 2) $trackingStep = 2;
+                        }
+                    } 
+                    // Nhóm Đang đặt hàng (Đi lẻ, không qua gộp)
+                    elseif ($statusId == 4) { 
+                        $trackingStep = 4; 
+                    } 
+                    // Nhóm Hoàn thành
+                    elseif ($statusId == 11) { 
+                        $trackingStep = 5; 
+                    } 
+                    // Các trạng thái đang duyệt (2, 3) -> Coi như đang ở bước 2
+                    else { 
+                        $trackingStep = 2; 
+                    }
+
+                    return [
+                        'type'              => 'PO',
+                        'id'                => $order->DocumentNo,
+                        'created_at'        => $order->CreatedDate,
+                        'delivery_date'     => $realDeliveryDate,
+                        'supplier_name'     => $order->Supplier,
+                        'total_amount'      => $order->items->sum(fn($i) => $i->Quantity * $i->Price),
+                        'item_count'        => $order->items->count(),
+                        'item_summary'      => $firstItem ? $firstItem->ItemName . ($order->items->count() > 1 ? '... và ' . ($order->items->count() - 1) . ' SP khác' : '') : '',
+                        
+                        'status_code'       => $statusId,
+                        'status_name'       => $realStatusName,
+                        'tracking_step'     => $trackingStep, 
+                        'merged_id'         => $linkedMergeOrder ? $linkedMergeOrder->DocumentNo : null,
+                    ];
+                });
+
+                $orders->setCollection($data);
+                return response()->json($orders);
+            }
+
+            // 2. LOGIC LẤY DANH SÁCH MP (Merge Orders)
+           
+            else if ($type === 'MP') {
+                $query = MergeOrder::with(['statusInfo', 'items','originalOrderItems.order'])
+                    ->orderBy('CreatedDate', 'desc');
+
+                if ($request->has('q')) {
+                    $query->where('DocumentNo', 'like', "%{$request->q}%");
+                }
+
+                $mps = $query->paginate($limit);
+
+                $data = $mps->getCollection()->map(function ($mp) {
+                    // --- LOGIC MAPPING TRACKING STEP CHO MP ---
+                    $statusId = (int)$mp->Status;
+                    $trackingStep = 1;
+
+                    if (in_array($statusId, [5])) {
+                        $trackingStep = -1; // Hủy/Trả về
+                    } elseif ($statusId == 8) {
+                        $trackingStep = 1;  // Nháp (Draft)
+                    } elseif ($statusId == 2) {
+                        $trackingStep = 2;  // Chờ duyệt
+                    } elseif ($statusId == 3) {
+                        $trackingStep = 3;  // Đã duyệt
+                    } elseif ($statusId == 4) {
+                        $trackingStep = 4;  // Đang đặt hàng
+                    } elseif ($statusId == 11) {
+                        $trackingStep = 5;  // Hoàn thành
+                    } else {
+                        $trackingStep = 2;
+                    }
+
+                    return [
+                        'type'              => 'MP',
+                        'id'                => $mp->DocumentNo,
+                        'created_at'        => $mp->CreatedDate,
+                        'delivery_date'     => $mp->ShipmentDate,
+                        'supplier_name'     => $mp->originalOrderItems->first()->order->Supplier,
+                        'total_amount'      => $mp->items->sum(fn($i) => $i->Quantity * $i->Price),
+                        'item_count'        => $mp->items->count(),
+                        'item_summary'      => $mp->items->first() ? $mp->items->first()->ItemName . '...' : '',
+                        
+                        'status_code'       => $statusId,
+                        'status_name'       => $mp->statusInfo->Name ?? 'Unknown',
+                        'tracking_step'     => $trackingStep,
+                        'merged_id'         => null
+                    ];
+                });
+
+                $mps->setCollection($data);
+                return response()->json($mps);
+            }
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Lỗi tải lịch sử đơn hàng', 'error' => $e->getMessage()], 500);
         }
     }
 }

@@ -32,8 +32,19 @@ class MergeOrder extends Model
     }
     public function originalOrderItems()
     {
-        // 'MergeHeaderID' là khóa ngoại trên bảng API$Purchase Line
-        // 'DocumentNo' là khóa chính của bảng API$Merge Header
         return $this->hasMany(OrderItem::class, 'MergeHeaderID', 'DocumentNo');
     }
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'CreatedBy', 'code'); // Map theo cột code trong bảng users
+    }
+    public function managerUser()
+    {
+        return $this->belongsTo(User::class, 'ModifiedManagerBy', 'code');
+    }
+     public function modifierUser()
+    {
+        return $this->belongsTo(User::class, 'ModifiedBy', 'code');
+    }
+    
 }

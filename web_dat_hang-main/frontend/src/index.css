@@ -4,17 +4,20 @@
 
 @layer base {
   :root {
-    --background: 255 255 255;
-    --foreground: 15 23 42;
+    /* --- LIGHT MODE --- */
+    /* Màu nền trang: Xám xanh rất nhạt (Sáng, sang trọng, tôn màu trắng của block) */
+    --page-bg: 241 245 249; /* Tương đương Slate-100 */
   }
+  
   .dark {
-    /* Nền tối dựa trên màu Bitex Dark */
-    --background: 15 23 42; 
-    --foreground: 226 232 240;
+    /* --- DARK MODE --- */
+    /* Màu nền trang: Đen sâu (Deep Navy/Black) để làm nổi hiệu ứng kính */
+    --page-bg: 2 6 23; /* Tương đương Slate-950 */
   }
+
   body {
-    /* Thêm transition để chuyển màu mượt mà */
-    @apply bg-white text-slate-900 dark:bg-bitex-dark dark:text-slate-100 transition-colors duration-300;
+    /* Áp dụng biến màu vừa định nghĩa */
+    @apply bg-[rgb(var(--page-bg))] text-slate-900 dark:text-slate-100 transition-colors duration-300;
   }
 }
 

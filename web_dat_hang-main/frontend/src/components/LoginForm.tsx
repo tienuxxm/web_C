@@ -29,7 +29,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
       <div className="text-center mb-8 relative">
         <div className="inline-block p-4 rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30 backdrop-blur-sm">
           <img 
-            src="public/assets/Bitex_logo.png" 
+            src="/web_dat_hang-main/public/assets/Bitex_logo.png" 
             alt="BITEX" 
             className="h-12 w-auto"
           />

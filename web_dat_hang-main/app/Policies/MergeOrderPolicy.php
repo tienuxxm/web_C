@@ -11,9 +11,7 @@ class MergeOrderPolicy
 {
     use HandlesAuthorization;
 
-    /**
-     * Kiểm tra quyền cập nhật trạng thái đơn gộp
-     */
+   
     public function updateStatus(User $user, MergeOrder $order, int $newStatus)
     {
         $currentStatus = (int)$order->Status;
@@ -26,7 +24,7 @@ class MergeOrderPolicy
         // 2. NHÓM CUNG ỨNG (Supply)
         if ($user->isRole('Supply') || $user->isInDepartment('Cung ứng')) {
             // Flow 1: Nháp (8) -> Gửi duyệt (2)
-            if ($currentStatus == OrderStatus::TYPE_MERGE && OrderStatus::TYPE_CHO_DUYET) return true;
+            if ($currentStatus == OrderStatus::TYPE_MERGE && $newStatus == OrderStatus::TYPE_CHO_DUYET) return true;
 
             // Flow 2: Đã duyệt (3) -> Đang đặt hàng (4)
             if ($currentStatus == 3 && $newStatus == 4) return true;
@@ -49,8 +47,7 @@ class MergeOrderPolicy
 
         // 4. SALES (Nếu có quyền sửa lại đơn khi bị trả về)
         if ($user->isRole('Sales')) {
-            // Ví dụ: Nếu đơn bị trả về (10), Sales có thể sửa và gửi lại (2) hoặc (8)
-            // Tùy logic bên bạn, tôi để tạm ở đây
+           
             if ($currentStatus == 10 && in_array($newStatus, [2, 8])) return true;
         }
         return false;

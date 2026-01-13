@@ -37,9 +37,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/suppliers', [SupplierController::class, 'index']);
     Route::get('order-statuses', [OrderController::class, 'getStatuses']);
     Route::prefix('orders')->controller(OrderController::class)->group(function () {
+        Route::get('history', 'history');
         Route::get('search', 'search');
-        Route::get('merged-by-month', 'mergedByMonth'); // Đưa trước
-        Route::get('merged-by-year', 'mergedByYear');   // Thêm route cho yearly
         Route::post('merge',         'merge');
         Route::delete('merge/{id}', 'unMerge');
         Route::get('stats', 'stats');

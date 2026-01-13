@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, ShoppingBag, Save,  List } from 'lucide-react';
+import { X, Plus, Trash2, ShoppingBag, Save, List, Send, ShoppingCart, Search } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { getCurrentUser } from '../../utils/auth';
@@ -7,6 +7,7 @@ import MySwal from '../../utils/swal';
 import { useTheme } from '../../context/ThemeContext';
 import { createPortal } from 'react-dom';
 import DistributionModal from './DistributionModal';
+import { is } from 'date-fns/locale';
 
 interface OrderItem {
   id?: string | number;
@@ -48,6 +49,8 @@ export interface OrderPayload {
   status_name: string;
   estimated_delivery: string;
   notes: string;
+  note_supply?: string;
+  note_manager?: string;
 }
 
 export interface OrderFromAPI {
@@ -61,7 +64,19 @@ export interface OrderFromAPI {
   intendedUse: string;
   orderDate: string;
   estimatedDelivery: string;
-  notes: string;
+  note: string;
+  note_history?: {
+    name: string;
+    content: string;
+    time: string;
+  }[];
+  source_orders?: {
+    po_number: string;
+    note: string;
+    user: string;
+    created_at: string;
+  }[];
+
   industry_id: number;
   items: {
     id: number;
@@ -92,8 +107,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   const [products, setProducts] = useState<Product[]>([]);
   const [allStatuses, setAllStatuses] = useState<StatusOption[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const [inspectItemId, setInspectItemId] = useState<number | null>(null);
+  const [ProductDropdownIndex, setProductDropdownIndex] = useState<number | null>(null);
+  const role = currentUser?.role?.name_role;
+  const dept = currentUser?.department?.name_department;
   const { theme } = useTheme();
   const [formData, setFormData] = useState({
     orderNumber: '',
@@ -136,27 +155,21 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     };
     fetchStatuses();
   }, []);
- useEffect(() => {
-    // Nếu chưa chọn ngành hàng thì không load, hoặc có thể load all tùy logic
-    // Ở đây mình ưu tiên load khi có ngành hàng để danh sách chính xác
+  useEffect(() => {
+
     const fetchSuppliersData = async () => {
       try {
         setLoadingSuppliers(true);
-        // Gọi API trực tiếp tại đây, truyền param industry
         const res = await api.get('/suppliers', {
-          params: { 
-            industry: selectedCategoryId // Truyền ID ngành hàng (ví dụ: 18, 10...) backend sẽ xử lý
+          params: {
+            industry: selectedCategoryId
           }
         });
-        
-        // Giả sử API trả về { status: 'success', data: [...] } hoặc mảng trực tiếp
-        // Điều chỉnh tùy theo response thực tế của backend bạn viết
         const supplierList = res.data.data || res.data || [];
         setSuppliers(supplierList);
 
       } catch (error) {
         console.error("Lỗi tải nhà cung cấp:", error);
-        // Không cần toast lỗi quá gắt, chỉ log
       } finally {
         setLoadingSuppliers(false);
       }
@@ -203,9 +216,58 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         setLoadingProducts(false);
       }
     };
-
     fetchProducts();
   }, [order, readOnly, selectedCategoryId]);
+  const normalizeText = (str: string) => {
+    return str
+      .toLowerCase()
+      .normalize("NFD") // Tách tổ hợp ký tự (ví dụ: ê + dấu sắc)
+      .replace(/[\u0300-\u036f]/g, "") // Xóa các dấu thanh
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .replace(/[^a-z0-9]/g, ""); // Xóa khoảng trắng thừa
+  };
+  const handleSelectProduct = (index: number, product: Product) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => {
+        if (i === index) {
+          return {
+            ...item,
+            productId: product.id,       // Lưu ID thật
+            productCode: product.code,
+            productName: product.name,
+            price: product.price,
+            erpPrice: product.price,
+            color: product.color,
+            unit: (product as any).unit || 'CAI',
+            quantity: 1,
+            quantityOld: 1
+          };
+        }
+        return item;
+      })
+    }));
+    setProductDropdownIndex(null);
+  };
+
+  const handleBlurProduct = (index: number) => {
+    setTimeout(() => {
+      setFormData(prev => ({
+        ...prev,
+        items: prev.items.map((item, i) => {
+          if (i === index) {
+            if (!String(selectedCategoryId).startsWith('18') && !item.productId) {
+              return { ...item, productName: '' };
+            }
+          }
+          return item;
+        })
+      }));
+      setProductDropdownIndex(null); // Đóng danh sách
+    }, 200);
+  };
+
   useEffect(() => {
     if (order) {
       const detectedCategory = order.industry_id
@@ -235,7 +297,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         intendedUse: order.intendedUse,
         orderDate: order.orderDate ? order.orderDate.split('T')[0] : '',
         estimatedDelivery: order.estimatedDelivery ? order.estimatedDelivery.split('T')[0] : '',
-        notes: order.notes ?? ''
+        notes: order.note ?? ''
       });
 
     } else {
@@ -272,12 +334,13 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     }));
   }, [formData.items]);
 
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const processOrderAction = (targetStatus?: number) => {
+    // 1. Validation (Giữ nguyên logic cũ)
     const orderDate = new Date(formData.orderDate);
     const deliveryDate = new Date(formData.estimatedDelivery);
-    // Kiểm tra ngày hợp lệ
+    const role = currentUser?.role?.name_role;
+    const isSupply = role === 'Supply';
+    const isLeader = role === 'Leader';
     if (deliveryDate <= orderDate) {
       toast.error("Ngày giao hàng phải sau ngày đặt hàng.");
       return;
@@ -286,8 +349,22 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       toast.error("Vui lòng chọn Ngành hàng (Category)!");
       return;
     }
-    // Chỉ lấy các trường cần gửi cho BE
-    const payload: OrderPayload = {
+    if (isSupply) {
+        // Kiểm tra nếu ô Supplier đang trống
+        if (!formData.supplier_name || formData.supplier_name.trim() === '') {
+            toast.error("Bắt buộc phải nhập Nhà cung cấp!", {
+              icon: '🏢',
+                duration: 4000
+            });
+            return; 
+        }
+    }
+   
+    const finalStatus = targetStatus !== undefined ? targetStatus : formData.status;
+
+   
+
+    const payload: any = {
       industry_id: selectedCategoryId,
       orderDate: formData.orderDate,
       intended_use: formData.intendedUse,
@@ -301,12 +378,29 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         price: it.price,
       })),
       status_name: formData.statusName,
-      status: formData.status,
+      status: finalStatus,
       estimated_delivery: formData.estimatedDelivery,
-      notes: formData.notes
     };
+
+    // Mapping Note
+    if (isSupply) {
+      payload.note_supply = formData.notes;
+    } else if (isLeader) {
+      payload.note_manager = formData.notes;
+    } else {
+      payload.notes = formData.notes;
+    }
+
+    // 5. Gọi API
     onSave(payload);
   };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    processOrderAction();
+  };
+
+
 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -335,7 +429,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       price: 0,
       erpPrice: 0,
       color: isManual ? '000' : '', // Mặc định màu 000
-   
+
     };
 
     setFormData(prev => ({
@@ -421,39 +515,35 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       ...prev,
       items: prev.items.map((item, i) => {
         if (i === index) {
-          // 1. Logic chọn sản phẩm (Giữ nguyên)
-          if (field === 'productId') {
-            const product = products.find(p => p.id === value);
-            // Khi chọn SP mới, gán mặc định quantity = 1 (hoặc 0 tùy logic của bạn)
-            return {
+          // --- KHI GÕ TÊN SẢN PHẨM ---
+          if (field === 'productName') {
+            setProductDropdownIndex(index);
+            const newState = {
               ...item,
-              productId: value as string,
-              productCode: product?.code || '',
-              productName: product?.name || '',
-              price: product?.price || 0,
-              erpPrice: product?.price || 0,
-              color: product?.color || '',
-              quantity: 1,    // Reset SL Duyệt
-              quantityOld: 1  // Reset SL Yêu cầu
+              productName: value as string,
             };
+
+            // 🔥 CHỈ ÁP DỤNG "RESET" NẾU KHÔNG PHẢI NGÀNH 18
+            if (!String(selectedCategoryId).startsWith('18')) {
+              newState.productId = '';     // Xóa ID để bắt chọn lại
+              newState.productCode = '';   // Xóa Code
+              newState.price = 0;          // Reset giá
+            }
+
+            return newState;
           }
 
-          // 2. LOGIC MỚI: Đồng bộ SL Yêu cầu -> SL Duyệt
+          // ... (Giữ nguyên các logic khác như quantityOld)
           if (field === 'quantityOld') {
-             return {
-                ...item,
-                quantityOld: value as number, // Cập nhật cái đang nhập
-                quantity: value as number     // Tự động copy sang SL Duyệt
-             };
+            return { ...item, quantityOld: value as number, quantity: value as number };
           }
 
-          // 3. Các trường khác cập nhật bình thường
           return { ...item, [field]: value };
         }
         return item;
       })
     }));
-};
+  };
   useEffect(() => {
     if (products.length === 0 || formData.items.length === 0) return;
 
@@ -462,8 +552,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     if (!allStatuses || allStatuses.length === 0) return [];
     if (!order) return allStatuses.filter(s => s.Type === 1);
     const currentStatus = Number(order.status);
-    const role = currentUser?.role?.name_role;
-    const dept = currentUser?.department?.name_department;
+
     if (role === 'Administrator') {
       return allStatuses;
     }
@@ -505,9 +594,49 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     const result = allStatuses.filter(s => uniqueTypes.includes(s.Type));
     return result;
   };
+  const getExecutionInfo = (currentOrder: any, statusId: number) => {
+    if (!currentOrder) return { name: '---', time: null };
+
+    // Logic lấy tên người chịu trách nhiệm chính cho trạng thái hiện tại
+    switch (statusId) {
+      case 1: // Mới -> Người tạo (Sale)
+        return {
+          name: currentOrder.created_name || currentOrder.created_by,
+          time: currentOrder.created_date
+        };
+
+      case 7: // Chốt (PO) -> Supply
+      case 8: // Gộp (MP) -> Supply
+      case 10: // Điều chỉnh -> Supply yêu cầu
+        return {
+          name: currentOrder.modified_supply_name || currentOrder.modified_by_name || currentOrder.created_name || 'Supply',
+          time: currentOrder.modified_supply_date || currentOrder.modified_date || currentOrder.created_date
+        };
+
+      case 2: // Chờ duyệt -> Supply đã gửi đi
+        return {
+          name: currentOrder.modified_by_name, // Người cuối cùng cập nhật (thường là Supply gửi)
+          time: currentOrder.modified_date
+        };
+
+      case 3: // Đã duyệt -> Leader
+      case 5: // Hủy -> Leader
+        return {
+          name: currentOrder.modified_manager_name || 'Leader',
+          time: currentOrder.modified_manager_date
+        };
+
+      default:
+        return {
+          name: currentOrder.modified_by_name || 'Hệ thống',
+          time: currentOrder.modified_date
+        };
+    }
+  };
+
   const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
-  const splitOrder = !readOnly && [8].includes(Number(order?.status));  
-  const Editquantity =['Supply'].includes(currentUser?.role?.name_role);
+  const splitOrder = !readOnly && [8].includes(Number(order?.status));
+  const Editquantity = ['Supply'].includes(currentUser?.role?.name_role);
   const modalClass = theme === 'light'
     ? 'bg-white border-gray-200 shadow-2xl'
     : 'glass-panel glass-panel-dark border-white/10';
@@ -577,53 +706,90 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              {/* Supplier */}
-              <div>
-                <label className={labelClass}>Nhà cung cấp <span className="text-red-500">*</span></label>
-                
-                {/* Nếu đang ReadOnly thì hiện text cho đẹp */}
-                {readOnly ? (
-                  <input
-                    value={formData.supplier_name}
-                    disabled
-                    className={inputClass}
-                  />
-                ) : (
-                  <select
-                    name="supplier_name"
-                    value={formData.supplier_name}
-                    onChange={(e) => {
-                       // Logic: Cập nhật tên NCC vào state
-                       // Nếu cần lưu cả Code, bạn có thể tìm trong mảng suppliers
-                       setFormData(prev => ({ ...prev, supplier_name: e.target.value }));
-                    }}
-                    required
-                    disabled={readOnly} // Nếu không chọn ngành hàng thì disable luôn cũng được: disabled={readOnly || !selectedCategoryId}
-                    className={inputClass}
-                  >
-                    <option value="">-- Chọn Nhà cung cấp --</option>
-                    
-                    {loadingSuppliers ? (
-                        <option disabled>Đang tải...</option>
-                    ) : (
-                        suppliers.length > 0 ? (
-                           suppliers.map((sup) => (
-                             // Value là Name vì formData đang lưu Name. 
-                             // Hiển thị dạng: Tên (Mã)
-                             <option key={sup.code} value={sup.name}>
-                               {sup.name}
-                             </option>
-                           ))
+              {/* Nhà cung cấp */}
+              {role === 'Supply' && (
+                <div>
+                  <label className={labelClass}>Nhà cung cấp <span className="text-red-500">*</span></label>
+
+                  {readOnly ? (
+                    <input
+                      value={formData.supplier_name}
+                      disabled
+                      className={inputClass}
+                    />
+                  ) : (
+                    <div className="relative group">
+                      {/* 1. Ô Input chính */}
+                      <input
+                        type="text"
+                        name="supplier_name"
+                        value={formData.supplier_name}
+                        onChange={(e) => {
+                          setFormData(prev => ({ ...prev, supplier_name: e.target.value }));
+                          setShowSupplierSuggestions(true); // Gõ phím là hiện gợi ý
+                        }}
+                        onFocus={() => setShowSupplierSuggestions(true)} // Click vào là hiện gợi ý
+                        // Delay việc ẩn list để kịp bắt sự kiện click vào item
+                        onBlur={() => setTimeout(() => setShowSupplierSuggestions(false), 200)}
+
+                        placeholder={loadingSuppliers ? "Đang tải danh sách..." : "Chọn hoặc nhập tên NCC..."}
+                        disabled={!selectedCategoryId}
+                        autoComplete="off"
+                        className={inputClass}
+                      />
+
+                      {/* Icon loading hoặc mũi tên */}
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                        {loadingSuppliers ? (
+                          <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
                         ) : (
-                           // Trường hợp không có dữ liệu hoặc chưa chọn ngành hàng
-                           <option disabled value="">
-                              {selectedCategoryId ? "Không tìm thấy NCC nào" : "Vui lòng chọn ngành hàng trước"}
-                           </option>
-                        )
-                    )}
-                  </select>
-                )}
-              </div>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        )}
+                      </div>
+
+                      {/* 2. Danh sách gợi ý (Custom Dropdown) */}
+                      {/* Chỉ hiện khi state = true và có dữ liệu */}
+                      {showSupplierSuggestions && suppliers.length > 0 && (
+                        <div className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
+                          {suppliers
+                            // Lọc danh sách theo từ khóa nhập (nếu muốn gợi ý thông minh)
+                            .filter(s => {
+                              const keyword = normalizeText(formData.supplier_name || '');
+
+                              // B. Chuẩn hóa tên NCC trong data (DB -> ko dấu)
+                              const name = normalizeText(s.name);
+                              const code = normalizeText(s.code || '');
+
+                              // C. So sánh trên nền tảng "không dấu"
+                              return name.includes(keyword) || code.includes(keyword);
+                            })
+                            .map((sup, index) => (
+                              <div
+                                key={`${sup.code}_${index}`}
+                                onClick={() => {
+                                  setFormData(prev => ({ ...prev, supplier_name: sup.name }));
+                                  setShowSupplierSuggestions(false); // Chọn xong thì ẩn đi
+                                }}
+                                className="px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors border-b border-gray-50 dark:border-gray-700/50 last:border-none"
+                              >
+                                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                  {sup.name}
+                                </p>
+                                {sup.code && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    Mã: {sup.code}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          {suppliers.filter(s => s.name.toLowerCase().includes((formData.supplier_name || '').toLowerCase())).length === 0}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
 
             {/* Cột phải */}
@@ -683,33 +849,82 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
 
                       {/* 1. Sản phẩm (3 cột) */}
-                      <div className="sm:col-span-3">
+                      {/* ... Trong vòng lặp map items ... */}
+
+                      <div className="sm:col-span-3 relative group">
                         <label className={labelClass}>Sản phẩm</label>
-                        {String(selectedCategoryId) === '18' ? (
-                          <input
-                            value={item.productName}
-                            onChange={e => updateItem(index, 'productName', e.target.value)}
-                            disabled={readOnly || !canEditDetails}
-                            placeholder="Tên sản phẩm..."
-                            className={inputClass}
-                            title={item.productName}
-                          />
-                        ) : (
-                          readOnly ? (
-                            <div className={`truncate ${inputClass} bg-transparent border-none px-0`}>{item.productName}</div>
+
+                        <input
+                          type="text"
+                          value={item.productName}
+                          onChange={(e) => updateItem(index, 'productName', e.target.value)}
+                          onFocus={() => setProductDropdownIndex(index)}
+                          onBlur={() => handleBlurProduct(index)}
+
+                          disabled={readOnly || !canEditDetails}
+
+                          // 👇 Thay đổi Placeholder tùy ngành
+                          placeholder={
+                            loadingProducts ? "Đang tải..." :
+                              String(selectedCategoryId).startsWith('18') ? "Nhập tên sản phẩm hành chính..." : "Gõ tên/mã để tìm..."
+                          }
+
+                          // 👇 Chỉ hiện viền đỏ cảnh báo với ngành thường (khi chưa chọn ID)
+                          className={`${inputClass} ${!String(selectedCategoryId).startsWith('18') && !item.productId && item.productName
+                            ? 'border-red-400 focus:ring-red-200'
+                            : ''
+                            }`}
+                          autoComplete="off"
+                        />
+
+                        {/* <div className="absolute right-3 top-[38px] pointer-events-none text-gray-400">
+                          {loadingProducts ? (
+                            <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
                           ) : (
-                            <select
-                              value={currentValue}
-                              onChange={e => updateItem(index, 'productId', e.target.value)}
-                              disabled={!canEditDetails}
-                              className={inputClass}
-                            >
-                              <option value="">Chọn sản phẩm...</option>
-                              {products.map(p => (
-                                <option key={p.id} value={p.id}> {p.name}</option>
+                            // Icon kính lúp (nhớ import Search từ lucide-react)
+                            <Search className="w-4 h-4" />
+                          )}
+                        </div> */}
+
+                        {/* DANH SÁCH GỢI Ý (Dropdown) */}
+                        {ProductDropdownIndex === index && products.length > 0 && !readOnly && (
+                          <div className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
+                            {products
+                              .filter(p => {
+                               
+                                const keyword = normalizeText(item.productName || '');
+                                const pName = normalizeText(p.name);
+                                const pCode = normalizeText(p.code);
+
+                                return pName.includes(keyword) || pCode.includes(keyword);
+                              })
+                              .map((p) => (
+                                <div
+                                  key={p.id}
+                                  onMouseDown={() => handleSelectProduct(index, p)}
+                                  className="px-4 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer transition-colors border-b border-gray-50 dark:border-gray-700/50 last:border-none flex flex-col"
+                                >
+                                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200 line-clamp-1">
+                                    {p.name}
+                                  </span>
+                                  <div className="flex justify-between items-center mt-1">
+                                    <span className="text-xs text-blue-600 dark:text-blue-400 font-mono bg-blue-50 dark:bg-blue-900/30 px-1.5 rounded">
+                                      {p.code}
+                                    </span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                      {p.price.toLocaleString()} ₫
+                                    </span>
+                                  </div>
+                                </div>
                               ))}
-                            </select>
-                          )
+
+                            {/* Thông báo nếu không tìm thấy */}
+                            {products.filter(p => normalizeText(p.name).includes(normalizeText(item.productName || '')) || normalizeText(p.code).includes(normalizeText(item.productName || ''))).length === 0 && (
+                              <div className="px-4 py-3 text-sm text-red-500 text-center italic bg-gray-50 dark:bg-gray-700/30">
+                                Không tìm thấy sản phẩm này trong kho
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                       {/* 2. Màu sắc (2 cột) - MỚI THÊM */}
@@ -727,23 +942,23 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         <input
                           value={item.quantityOld}
                           onChange={e => updateItem(index, 'quantityOld', Number(e.target.value))}
-                          disabled={readOnly || !canEditDetails}
+                          disabled={readOnly || !canEditDetails || Editquantity}
                           className={inputClass}
                         />
                       </div>
                       {/* 4. SL Duyệt (2 cột) */}
-                    
+
                       <div className="sm:col-span-2">
                         <label className={labelClass}>SL Duyệt</label>
                         <input
                           value={item.quantity}
                           onChange={e => updateItem(index, 'quantity', Number(e.target.value))}
-                          disabled={readOnly || !canEditDetails||!Editquantity}
+                          disabled={readOnly || !canEditDetails || !Editquantity}
                           className={`${inputClass} ${theme === 'dark' ? 'focus:border-yellow-500' : ''}`}
                         />
                       </div>
-             
-                      
+
+
 
                       {/* 5. Đơn giá (2 cột) */}
                       <div className="sm:col-span-2">
@@ -751,7 +966,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         <input
                           value={item.price}
                           onChange={e => updateItem(index, 'price', Number(e.target.value))}
-                          disabled={!canEditDetails || readOnly|| !Editquantity}
+                          disabled={!canEditDetails || readOnly || !Editquantity}
                           className={inputClass}
                         />
                       </div>
@@ -766,37 +981,37 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                       </div>
                       {/* 6. Xóa (1 cột) */}
 
-                      
-                        <div className="sm:col-span-1 flex justify-center pb-1">
-                          {formData.orderNumber?.startsWith('MP') && item.id && (
-                            <button
-                              type="button"
-                              onClick={() => setInspectItemId(Number(item.id))}
-                              className={`
+
+                      <div className="sm:col-span-1 flex justify-center pb-1">
+                        {formData.orderNumber?.startsWith('MP') && item.id && (
+                          <button
+                            type="button"
+                            onClick={() => setInspectItemId(Number(item.id))}
+                            className={`
                                 p-2 rounded-lg transition-colors duration-200
                                 /* Light Mode */
                                 text-blue-600 hover:bg-blue-100 hover:text-blue-800
                                 /* Dark Mode */
                                 dark:text-blue-400 dark:hover:bg-blue-500/20 dark:hover:text-blue-200
                               `}
-                              title="Xem phân bổ hàng cho Sales"
-                            >
-                              <List size={18} />
-                            </button>
-                          )}
-                          { (canEditDetails  || splitOrder) &&(
-                          <button
-                              type="button"
-                              onClick={() => removeItem(index)}
-                              className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
-                              title="Xóa dòng"
-                            >
-                              <Trash2 className="h-5 w-5" />
+                            title="Xem phân bổ hàng cho Sales"
+                          >
+                            <List size={18} />
                           </button>
-                          )}
-                          
-                        </div>
-                     
+                        )}
+                        {(canEditDetails || splitOrder) && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(index)}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/20 rounded-lg transition-colors"
+                            title="Xóa dòng"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
+
+                      </div>
+
                     </div>
                   </div>
                 )
@@ -808,25 +1023,42 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
           <div className={`p-4 rounded-xl border ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-black/20 border-white/5'}`}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex-1 w-full sm:w-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Trạng thái đơn</label>
-                  <select
-                    name="status"
-                    value={formData.status}
-                    disabled={readOnly}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setFormData(prev => ({ ...prev, status: val }));
-                      if (val === 5) toast('Nhớ nhập lý do hủy vào ghi chú!', { icon: '📝' });
-                    }}
-                    className={inputClass}
-                  >
-                    {getAvailableStatuses().map(s => (
-                      <option key={s.ID} value={s.Type}>{s.Name}</option>
-                    ))}
-                  </select>
+
+                {/* CỘT 1: TRẠNG THÁI (Giữ nguyên code hiển thị mới) */}
+                <div className="flex flex-col gap-2">
+                  <label className={labelClass}>Trạng thái đơn hàng</label>
+                  {(() => {
+                    const info = getExecutionInfo(order, Number(formData.status));
+                    return (
+                      <div className={`h-full px-4 py-3 rounded-xl border flex items-center justify-between gap-3 transition-all bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700`}>
+                        {/* Tên trạng thái */}
+                        <div className="flex items-center gap-2">
+                          <span className={`h-3 w-3 rounded-full ${formData.status === 3 ? 'bg-green-500' :
+                            formData.status === 5 ? 'bg-red-500' :
+                              formData.status === 1 ? 'bg-blue-500' :
+                                formData.status === 4 ? 'bg-cyan-500' : 'bg-yellow-500'
+                            }`}></span>
+                          <span className="font-bold text-lg text-gray-800 dark:text-white uppercase">
+                            {formData.statusName || 'Mới'}
+                          </span>
+                        </div>
+
+                        {/* Thông tin người thực hiện */}
+                        <div className="text-right flex flex-col justify-center">
+                          <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Thực hiện bởi
+                          </span>
+                          <span className="text-xs sm:text-sm font-medium text-blue-700 dark:text-blue-300">
+                            {info.name} <span className="text-gray-400 font-normal mx-1">-</span> {info.time ? new Date(info.time).toLocaleDateString('vi-VN') : '--'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <div>
+
+                {/* CỘT 2: NGÀY GIAO DỰ KIẾN (SỬA Ở ĐÂY) */}
+                <div className="flex flex-col gap-2 h-full"> {/* Thêm h-full vào wrapper */}
                   <label className={labelClass}>Ngày giao dự kiến</label>
                   <input
                     type="date"
@@ -835,9 +1067,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                     min={formData.orderDate}
                     disabled={!canEditDetails && !readOnly}
                     onChange={handleChange}
-                    className={inputClass}
+                    // 👇 THÊM class 'h-full' để input tự dãn chiều cao bằng ô bên cạnh
+                    // 👇 THÊM class 'cursor-pointer' để trải nghiệm tốt hơn
+                    className={`${inputClass} h-full cursor-pointer min-h-[56px]`}
                   />
                 </div>
+
               </div>
 
 
@@ -848,41 +1083,213 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                 {formData.total.toLocaleString()} ₫
               </p>
             </div>
-            {/* Notes */}
-            <div className="mt-4">
-              <label className={labelClass}>Ghi chú</label>
-              <textarea
-                name="notes"
-                value={formData.notes}
-                onChange={handleChange}
-                rows={2}
-                disabled={readOnly}
-                className={inputClass}
-                placeholder="Ghi chú thêm..."
-              />
+
+
+            {/* Khu vực Ghi chú (Note) */}
+            <div className="mt-4 sm:col-span-2">
+              <label className={labelClass}>Ghi chú trao đổi</label>
+
+              <div className={`rounded-xl border overflow-hidden ${theme === 'light' ? 'bg-white border-gray-200' : 'bg-gray-800/30 border-gray-700'}`}>
+
+                {/* 1. Phần hiển thị Lịch sử (Nếu có) */}
+                {order?.note_history && order.note_history.length > 0 && (
+                  <div className={`p-4 text-sm space-y-3 border-b ${theme === 'light' ? 'bg-gray-50 border-gray-100' : 'bg-white/5 border-gray-700'}`}>
+                    {order.note_history.map((note, index) => (
+                      <div key={index} className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
+                        {/* Tên  */}
+                        <span className="font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                          {note.name || 'Unknown'}
+                        </span>
+
+                        {/* Nội dung ghi chú */}
+                        <span className="text-gray-700 dark:text-gray-200">
+                          {note.content}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+
+
+                {/* 2. Phần nhập liệu mới */}
+                {!readOnly && (
+                  <div className="p-2">
+                    <textarea
+                      name="notes"
+                      // Lưu ý: formData.notes ở đây là biến tạm để gửi lên server
+                      // Server sẽ tự map vào cột Note/NoteSupply/NoteManager tùy role
+                      onChange={handleChange}
+                      rows={2}
+                      className={`w-full px-3 py-2 bg-transparent border-none focus:ring-0 text-sm sm:text-base resize-none placeholder-gray-400 ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}
+                      placeholder="Nhập ghi chú của bạn vào đây..."
+                    />
+                  </div>
+                )}
+
+
+              </div>
+              {/* {order?.source_orders && order.source_orders.length > 0 && (
+                  <div className={`mt-4 p-4 rounded-xl border ${theme === 'light' ? 'bg-blue-50 border-blue-100' : 'bg-blue-900/20 border-blue-800'}`}>
+                    <h4 className={`text-sm font-bold mb-3 flex items-center gap-2 ${theme === 'light' ? 'text-blue-800' : 'text-blue-300'}`}>
+                      📦 Danh sách đơn PO gốc:
+                    </h4>
+                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+                      {order.source_orders.map((po: any) => (
+                        <div key={po.po_number} className={`text-sm flex flex-col sm:flex-row sm:items-start sm:gap-2 border-b pb-2 last:border-0 ${theme === 'light' ? 'border-blue-200' : 'border-blue-800/50'}`}>
+                          
+                          
+                          <span className={`font-mono font-bold whitespace-nowrap ${theme === 'light' ? 'text-gray-800' : 'text-white'}`}>
+                            {po.po_number}
+                          </span>
+                          <span className={`text-xs italic whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>
+                            ({po.user}):
+                          </span>
+                          <span className={`${theme === 'light' ? 'text-gray-700' : 'text-gray-300'}`}>
+                            {po.note || <span className="opacity-50 italic">Không có ghi chú</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}  */}
             </div>
+
           </div>
 
           {/* 4. Action Buttons */}
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`px-5 py-2.5 rounded-xl font-medium transition-all ${theme === 'light'
-                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                : 'bg-white/5 text-gray-300 hover:bg-white/10'
-                }`}
-            >
-              Đóng
-            </button>
-            {!readOnly && (
-              <button
-                type="submit"
-                className="px-5 py-2.5 rounded-xl font-medium text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-lg shadow-blue-500/20 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2"
-              >
-                <Save className="h-4 w-4" />
-                {order ? 'Cập nhật' : 'Tạo đơn hàng'}
-              </button>
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+            {role === 'Sales' && !readOnly &&(
+              <>
+                {/* Trạng thái 10 (Điều chỉnh) -> Gửi lại thành 1 (Mới) */}
+                {formData.status === 10 && (
+                  <button
+                    type="button"
+                    onClick={() => processOrderAction(1)}
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-2"
+                  >
+                    <Send className="w-4 h-4" /> Gửi lại đơn
+                  </button>
+                )}
+                {/* Trạng thái 1 (Mới) -> Lưu nháp */}
+                {formData.status === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => processOrderAction()}
+                    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl"
+                  >
+                    Lưu thay đổi
+                  </button>
+                )}
+              </>
+            )}
+            {(role === 'Supply' || currentUser?.department?.name_department === 'Cung ứng') && (() => {
+              const isMergeOrder = formData.orderNumber?.startsWith('MP');
+
+              return isMergeOrder ? (
+                // --- A. ĐƠN GỘP (MERGE ORDER - MP) ---
+                <>
+                  {/* 8 (Nháp) -> 2 (Gửi duyệt) */}
+                  {formData.status === 8 && (
+                    <button
+                      type="button"
+                      onClick={() => processOrderAction(2)}
+                      className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-lg shadow-indigo-500/30"
+                    >
+                      Gửi duyệt
+                    </button>
+                  )}
+
+                  {/* 3 (Đã duyệt) -> 4 (Đặt hàng) */}
+                  {formData.status === 3 && (
+                    <button
+                      type="button"
+                      onClick={() => processOrderAction(4)}
+                      className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold shadow-lg flex items-center gap-2"
+                    >
+                      <Send className="w-4 h-4" /> Tiến hành đặt hàng
+                    </button>
+                  )}
+
+                  {/* 4 (Đang đặt) -> 11 (Hoàn thành) */}
+                  {formData.status === 4 && (
+                    <button
+                      type="button"
+                      onClick={() => processOrderAction(11)}
+                      className="px-6 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" /> Hoàn thành đơn
+                    </button>
+                  )}
+                </>
+              ) : (
+                // --- B. ĐƠN LẺ (PURCHASE ORDER - PO) ---
+                <>
+                  {/* 1 (Mới) -> 7 (Chốt) hoặc 10 (Trả về) */}
+                  {formData.status === 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => processOrderAction(10)}
+                        className="px-5 py-2.5 rounded-xl bg-orange-100 text-orange-700 hover:bg-orange-200 font-medium"
+                      >
+                        Yêu cầu chỉnh sửa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => processOrderAction(7)}
+                        className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-lg"
+                      >
+                        Chốt đơn
+                      </button>
+                    </>
+                  )}
+
+                  {/* 3 (Đã duyệt) -> 4 (Đặt hàng) - Dành cho PO lẻ không cần gộp */}
+                  {formData.status === 3 && (
+                    <button
+                      type="button"
+                      onClick={() => processOrderAction(4)}
+                      className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold shadow-lg flex items-center gap-2"
+                    >
+                      <ShoppingCart className="w-4 h-4" /> Đặt hàng ngay
+                    </button>
+                  )}
+
+                  {/* 4 (Đang đặt) -> 11 (Hoàn thành) */}
+                  {formData.status === 4 && (
+                    <button
+                      type="button"
+                      onClick={() => processOrderAction(11)}
+                      className="px-6 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" /> Hoàn thành
+                    </button>
+                  )}
+
+
+                </>
+              );
+            })()}
+
+
+            {(role === 'Leader' || role === 'Manage') && formData.status === 2 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => processOrderAction(5)} // 2 -> 5 (Hủy/Từ chối)
+                  className="px-5 py-2.5 rounded-xl bg-red-100 text-red-700 hover:bg-red-200 font-medium"
+                >
+                  Từ chối đơn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => processOrderAction(3)} // 2 -> 3 (Duyệt)
+                  className="px-6 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg"
+                >
+                  Phê duyệt
+                </button>
+              </>
             )}
           </div>
 

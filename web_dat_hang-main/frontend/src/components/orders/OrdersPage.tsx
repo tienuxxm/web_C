@@ -45,7 +45,7 @@ interface Order {
 }
 
 interface OrdersPageProps {
-  mode: 'normal' | 'monthly' | 'yearly' | 'merged';
+  mode: 'normal' | 'merged'|'completed';
   filterType?: string;
 }
 
@@ -250,6 +250,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
         notes: apiOrder.notes ?? '',
         subtotal: Number(apiOrder.subtotal),
         total: Number(apiOrder.total_amount),
+        source_orders: apiOrder.source_orders || [],
         items: apiOrder.items.map((it: any) => ({
           id: it.id,
           product: {
@@ -608,36 +609,16 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
     setCurrentUser(user);
   }, []);
 
-  const fetchMonthlyOrders = async () => {
-    try {
-      const res = await api.get('/orders/merged-by-month');
-      setMonthlyOrders(res.data);
-    } catch (error) {
-      console.error('❌ Lỗi khi fetch đơn gộp theo tháng:', error);
-    }
-  };
+  
 
-  const fetchYearlyOrders = async () => {
-    try {
-      const res = await api.get('/orders/merged-by-year');
-      setYearlyOrders(res.data);
-    } catch (error) {
-      console.error('❌ Lỗi khi fetch đơn gộp theo năm:', error);
-    }
-  };
+  
   useEffect(() => {
     setOrders([]);
-    setMonthlyOrders([]);
-    setYearlyOrders([]);
     setSelectedOrders([]);
     loadStats();
 
     if (mode === 'normal' || mode === 'merged') {
       fetchOrders();
-    } else if (mode === 'monthly') {
-      fetchMonthlyOrders();
-    } else if (mode === 'yearly') {
-      fetchYearlyOrders();
     }
   }, [mode, page, refreshKey, currentUser, search, filterType]);
 

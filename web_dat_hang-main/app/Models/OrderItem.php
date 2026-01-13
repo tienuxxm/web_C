@@ -30,5 +30,10 @@ class OrderItem extends Model
     {
         return $this->belongsTo(Product::class, 'ItemCode', 'Code');
     }
+    public function mergeOrder()
+    {
+        // MergeHeaderID trong bảng OrderItem link tới DocumentNo của MergeOrder
+        return $this->belongsTo(MergeOrder::class, 'MergeHeaderID', 'DocumentNo');
+    }
 }
 
