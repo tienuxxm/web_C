@@ -19,6 +19,8 @@ interface OrderItem {
   price: number;
   erpPrice: number;
   color: string;
+  unit?: string;
+  variant?: string;
 }
 interface StatusOption {
   ID: number;
@@ -287,7 +289,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
             quantityOld: it.quantityOld,
             price: it.price,
             erpPrice: it.erpPrice,
-            color: it.product.color
+            color: it.product.color,
+            unit:  it.unit,
           };
         }),
         subtotal: order.subtotal,
@@ -334,11 +337,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     }));
   }, [formData.items]);
 
-  const processOrderAction = (targetStatus?: number) => {
+  const processOrderAction = async (targetStatus?: number) => {
     // 1. Validation (Giữ nguyên logic cũ)
     const orderDate = new Date(formData.orderDate);
     const deliveryDate = new Date(formData.estimatedDelivery);
     const role = currentUser?.role?.name_role;
+
     const isSupply = role === 'Supply';
     const isLeader = role === 'Leader';
     if (deliveryDate <= orderDate) {
@@ -350,20 +354,56 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       return;
     }
     if (isSupply) {
-        // Kiểm tra nếu ô Supplier đang trống
-        if (!formData.supplier_name || formData.supplier_name.trim() === '') {
-            toast.error("Bắt buộc phải nhập Nhà cung cấp!", {
-              icon: '🏢',
-                duration: 4000
-            });
-            return; 
-        }
+      // Kiểm tra nếu ô Supplier đang trống
+      if (!formData.supplier_name || formData.supplier_name.trim() === '') {
+        toast.error("Bắt buộc phải nhập Nhà cung cấp!", {
+          icon: '🏢',
+          duration: 4000
+        });
+        return;
+      }
     }
-   
+    const seenItems = new Map<string, number>(); // Key: Code-Color, Value: Count
+    const duplicateNames = new Set<string>();
+
+    formData.items.forEach(item => {
+      // Tạo khóa định danh: Mã + Màu (nếu không có màu thì lấy mã thôi)
+      // Chuẩn hóa về chữ thường để so sánh chính xác
+      const key = `${item.productCode?.toLowerCase()}-${item.color?.toLowerCase() || 'default'}`;
+
+      if (seenItems.has(key)) {
+        duplicateNames.add(item.productName);
+      } else {
+        seenItems.set(key, 1);
+      }
+    });
+
+    if (duplicateNames.size > 0) {
+      // Hiển thị danh sách tên sản phẩm bị trùng
+      const listName = Array.from(duplicateNames).map(name => `• ${name}`).join('<br/>');
+
+      const result = await MySwal.fire({
+        title: '⚠️ Phát hiện trùng sản phẩm',
+        html: `
+                <div class="text-left text-sm">
+                    <p class="mb-2">Các sản phẩm sau đang xuất hiện <b>nhiều lần</b> trong đơn (cùng mã & màu):</p>
+                    <div class="text-yellow-600 font-medium mb-3 bg-yellow-50 p-2 rounded border border-yellow-200">
+                        ${listName}
+                    </div>
+                    <p>Bạn có chắc chắn muốn giữ nguyên không?</p>
+                </div>
+            `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Vẫn thêm (Tôi cố ý)',
+        cancelButtonText: 'Để tôi kiểm tra lại',
+        confirmButtonColor: '#f59e0b', // Màu vàng cam cảnh báo
+      });
+
+      // Nếu user bấm "Hủy" hoặc click ra ngoài -> Dừng lại
+      if (!result.isConfirmed) return;
+    }
     const finalStatus = targetStatus !== undefined ? targetStatus : formData.status;
-
-   
-
     const payload: any = {
       industry_id: selectedCategoryId,
       orderDate: formData.orderDate,
@@ -376,6 +416,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
         quantity: it.quantity,
         quantity_old: it.quantityOld,
         price: it.price,
+        unit: it.unit,
       })),
       status_name: formData.statusName,
       status: finalStatus,
@@ -390,7 +431,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     } else {
       payload.notes = formData.notes;
     }
-
+    console.log("Payload gửi đi:", payload);
     // 5. Gọi API
     onSave(payload);
   };
@@ -853,17 +894,16 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
                       <div className="sm:col-span-3 relative group">
                         <label className={labelClass}>Sản phẩm</label>
-
                         <input
                           type="text"
                           value={item.productName}
+                          title={item.productName}
                           onChange={(e) => updateItem(index, 'productName', e.target.value)}
                           onFocus={() => setProductDropdownIndex(index)}
                           onBlur={() => handleBlurProduct(index)}
 
                           disabled={readOnly || !canEditDetails}
 
-                          // 👇 Thay đổi Placeholder tùy ngành
                           placeholder={
                             loadingProducts ? "Đang tải..." :
                               String(selectedCategoryId).startsWith('18') ? "Nhập tên sản phẩm hành chính..." : "Gõ tên/mã để tìm..."
@@ -891,7 +931,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                           <div className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
                             {products
                               .filter(p => {
-                               
+
                                 const keyword = normalizeText(item.productName || '');
                                 const pName = normalizeText(p.name);
                                 const pCode = normalizeText(p.code);
@@ -928,7 +968,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         )}
                       </div>
                       {/* 2. Màu sắc (2 cột) - MỚI THÊM */}
-                      <div className="sm:col-span-2">
+                      <div className="sm:col-span-1">
                         <label className={labelClass}>Màu sắc</label>
                         <input
                           value={item.color}
@@ -937,7 +977,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         />
                       </div>
                       {/* 3. SL Yêu cầu (2 cột) */}
-                      <div className="sm:col-span-2">
+                      <div className="sm:col-span-1">
                         <label className={labelClass}>SL Yêu cầu</label>
                         <input
                           value={item.quantityOld}
@@ -948,10 +988,11 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                       </div>
                       {/* 4. SL Duyệt (2 cột) */}
 
-                      <div className="sm:col-span-2">
+                      <div className="sm:col-span-1">
                         <label className={labelClass}>SL Duyệt</label>
                         <input
                           value={item.quantity}
+                          title={String(item.quantity)}
                           onChange={e => updateItem(index, 'quantity', Number(e.target.value))}
                           disabled={readOnly || !canEditDetails || !Editquantity}
                           className={`${inputClass} ${theme === 'dark' ? 'focus:border-yellow-500' : ''}`}
@@ -971,12 +1012,21 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className={labelClass}>Đơn giá ERP </label>
+                        <label className={labelClass}>Giá ERP </label>
                         <input
                           value={item.erpPrice}
+                          title={String(item.erpPrice)}
                           onChange={e => updateItem(index, 'erpPrice', Number(e.target.value))}
                           disabled
                           className={inputClass}
+                        />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <label className={labelClass}>ĐVT</label>
+                        <input
+                          value={item.unit} // Hiển thị Unit
+                          disabled
+                          className={`${inputClass} px-2 text-center bg-gray-100 dark:bg-white/5`}
                         />
                       </div>
                       {/* 6. Xóa (1 cột) */}
@@ -1159,7 +1209,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
           {/* 4. Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-            {role === 'Sales' && !readOnly &&(
+            {role === 'Sales' && !readOnly && (
               <>
                 {/* Trạng thái 10 (Điều chỉnh) -> Gửi lại thành 1 (Mới) */}
                 {formData.status === 10 && (

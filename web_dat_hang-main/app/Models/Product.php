@@ -115,7 +115,7 @@ class Product extends Model
     // Tên bảng có khoảng trắng, cần giữ chính xác
     protected $table = 'dbo.view_Item Variant';
 
-    protected $primaryKey = 'Code';
+    protected $primaryKey = null;
     protected $keyType = 'string';
     public $incrementing = false;
     public $timestamps = false;

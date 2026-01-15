@@ -1,8 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AuthPage from './pages/AuthPage';
+import MagicAuthHandler from './pages/MagicAuthHandler';
 import DashboardLayout from './layouts/DashboardLayout';
-
-// Import các Page con
 import OrderHistoryPage from './components/orders/OrderHistoryPage';
 import OrdersPage from './components/orders/OrdersPage';
 import ProductsPage from './components/products/ProductsPage';
@@ -30,12 +29,9 @@ export default function App() {
 
     if (!user) return <Navigate to="/login" replace />;
 
-    // Logic ưu tiên: Sales/Supply vào Orders, còn lại vào OrdersMerged
     if (['Sales', 'Supply'].includes(user.role)) {
       return <Navigate to="/orders" replace />;
     }
-    
-    // Mặc định cho Leader, Admin...
     return <Navigate to="/orders-merged" replace />;
   };
 
@@ -43,17 +39,14 @@ export default function App() {
     <Routes>
       {/* --- PUBLIC ROUTE: LOGIN --- */}
       {/* Đổi path thành /login cho chuẩn */}
-      <Route 
-        path="/login" 
+      <Route path="/login" 
         element={
           <PublicRoute>
             <AuthPage />
           </PublicRoute>
         } 
       />
-
-      {/* --- PRIVATE ROUTES (LAYOUT CHÍNH) --- */}
-      {/* Không dùng path="/dashboard" nữa, để trống để URL ngắn gọn */}
+      <Route path="/magic-auth" element={<MagicAuthHandler />} />
       <Route
         element={
           <PrivateRoute>
@@ -61,14 +54,11 @@ export default function App() {
           </PrivateRoute>
         }
       >
-        {/* 👇 TRANG CHỦ MẶC ĐỊNH (/) */}
         <Route index element={<RoleBasedRedirect />} />
 
-        {/* 👇 CÁC TRANG CON (Bây giờ đường dẫn sẽ là /my-orders, /orders...) */}
         
         <Route path="my-orders" element={<OrderHistoryPage />} />
 
-        {/* Quản lý đơn hàng */}
         <Route path="orders" element={<OrdersPage mode="normal" filterType="all_orders" />} />
         <Route path="orders-merged" element={<OrdersPage mode="merged" filterType="merged_process" />} />
         <Route path="orders-completed" element={<OrdersPage mode="merged" filterType="merged_completed" />} />

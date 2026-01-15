@@ -208,46 +208,67 @@ class MergeOrderController extends Controller
     {
         $user = JWTAuth::user();
         $group = $request->get('group', 'merged');
+        
+        // Setup tên bảng để query raw
         $headerModel = new MergeOrder();
         $lineModel   = new MergeOrderItem();
         $rawHeaderTbl = $headerModel->getTable();
         $rawLineTbl   = $lineModel->getTable();
         $tblHeader = '[' . $rawHeaderTbl . ']';
         $tblLine   = '[' . $rawLineTbl . ']';
+
         $query = MergeOrder::query();
+
+       
         if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
             $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
             $query->whereIn('Industry', $allowedIndustries);
+        } 
+        elseif ($user->isRole('Sales')) {
+            $query->whereHas('originalOrderItems.order', function ($q) use ($user) {
+                $q->where('CreatedBy', $user->code);
+            });
         }
         $pending = [];
         $processing = [];
         $total = [];
+
         if ($group === 'merged' || $group === 'merged_process') {
             if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam') || $user->isRole('Supply')) {
-                $pending = [8];
-                $processing = [3];
+                $pending = [8]; // Nháp (Cần gửi duyệt)
+                $processing = [3]; // Đã duyệt (Cần đặt hàng)
                 $total = [8, 3];
             } elseif ($user->isRole('Leader')) {
-                $pending = [2];
-                $processing = [3];
+                $pending = [2]; // Chờ duyệt (Cần duyệt)
+                $processing = [3]; // Đã duyệt
                 $total = [2, 3];
+            } elseif ($user->isRole('Sales')) {
+                // [MỚI] Cho Sales
+                $pending = [2];     // Chờ Sếp duyệt
+                $processing = [3];  // Đã duyệt (Đang chờ hàng về)
+                $total = [8, 2, 3, 5]; // Tổng bao gồm cả Nháp, Hủy để khớp với danh sách
             } else {
                 $total = [8, 2, 3];
             }
         } elseif ($group === 'merged_completed' || $group === 'completed') {
-            $pending = [4];
-            $processing = [11];
+            $pending = [4];    // Đang đặt hàng
+            $processing = [11]; // Hoàn thành
             $total = [4, 11];
         }
 
         if (empty($total)) {
             return response()->json(['total_orders' => 0, 'pending_orders' => 0, 'processing_orders' => 0, 'total_revenue' => 0]);
         }
+
+        // ---------------------------------------------------------
+        // 3. TÍNH TOÁN (QUERY)
+        // ---------------------------------------------------------
         $stats = $query->selectRaw("
             SUM(CASE WHEN $tblHeader.[Status] IN (" . implode(',', $total) . ") THEN 1 ELSE 0 END) as total,
             SUM(CASE WHEN $tblHeader.[Status] IN (" . implode(',', $pending) . ") THEN 1 ELSE 0 END) as pending,
             SUM(CASE WHEN $tblHeader.[Status] IN (" . implode(',', $processing) . ") THEN 1 ELSE 0 END) as processing
         ")->first();
+
         $revenue = 0;
         if ($stats->total > 0) {
             $revenueQuery = clone $query;
@@ -255,11 +276,12 @@ class MergeOrderController extends Controller
                 DB::raw("$tblLine as lines"),
                 'lines.DocumentNo',
                 '=',
-                DB::raw("$tblHeader.[DocumentNo]") // Bọc DB::raw để Laravel không tự thêm ngoặc sai
+                DB::raw("$tblHeader.[DocumentNo]") 
             );
             $revenueQuery->whereIn(DB::raw("$tblHeader.[Status]"), $total);
             $revenue = $revenueQuery->sum(DB::raw('lines.Quantity * lines.Price'));
         }
+
         return response()->json([
             'total_orders'      => (int) ($stats->total ?? 0),
             'pending_orders'    => (int) ($stats->pending ?? 0),
@@ -277,6 +299,11 @@ class MergeOrderController extends Controller
             if ($user->isInDepartment('Cung ứng') || $user->isInDepartment('Hành chính - Miền Nam')) {
                 $allowedIndustries = $user->allowedIndustries()->pluck('Code')->toArray();
                 $query->whereIn('Industry', $allowedIndustries);
+            } elseif ($user->isRole('Sales')) {
+            
+            $query->whereHas('originalOrderItems.order', function ($q) use ($user) {
+                $q->where('CreatedBy', $user->code);
+            });
             } elseif ($user->isRole('Leader')) {
             }
             $group = $request->get('group', 'merged');

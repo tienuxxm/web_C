@@ -259,12 +259,13 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
             name: it.product?.name || '',
             price: Number(it.product?.price || 0),
             color: it.product?.color,
+            unit: it.unit || it.product?.unit,
           },
           quantity: Number(it.quantity),
           quantityOld: Number(it.quantity_old),
           price: Number(it.unit_price),
           erpPrice: Number(it.erp_price),
-
+          unit:it.unit,
         }))
       };
       setReadOnlyMode(readOnly);
@@ -275,7 +276,25 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
       toast.error('Không thể tải đơn hàng từ server');
     }
   };
+  
+  useEffect(() => {
+  // 1. Kiểm tra xem có lệnh mở đơn từ Session không
+  const autoOpenCode = sessionStorage.getItem('AUTO_OPEN_ORDER_CODE');
 
+  if (autoOpenCode) {
+    console.log("Tìm thấy lệnh mở đơn:", autoOpenCode);
+    
+    // 2. Gọi hàm handleEditOrder của bạn
+    // Vì hàm handleEditOrder nhận vào object Order, ta fake một object chỉ có ID
+    // Logic của bạn: const orderId = order.id || order.orderNumber; -> Nên chỉ cần truyền id là đủ
+    const fakeOrderObj = { id: autoOpenCode, orderNumber: autoOpenCode } as any;
+    
+    handleEditOrder(fakeOrderObj);
+
+    // 3. Xóa lệnh khỏi session để F5 không bị bật lại popup
+    sessionStorage.removeItem('AUTO_OPEN_ORDER_CODE');
+  }
+}, []);
 
   const handleDeleteOrder = async (order: Order) => {
     const result = await MySwal.fire({
@@ -332,7 +351,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
             quantity_old: it.quantity_old,
             productName: it.productName,
             price: it.price,
-            color: it.variant || '',
+            color: it.variant ,
           })),
         };
         await api.post('/orders', payload);

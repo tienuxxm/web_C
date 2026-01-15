@@ -86,11 +86,13 @@ class OrderController extends Controller
                 $cleanCode = $itemData['productCode'];
                 $isIndustry18 = ($request->industry_id == 18);
                 $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
-                $prod = Product::where('code', $cleanCode)->first();
+                $prod = Product::where('code', $cleanCode)
+                                ->where('Variant', $variant)       
+                                ->first();
                 if ($prod) {
-                    $itemName = $prod->name;
-                    $price    = $prod->price;
-                    $unit     = $prod->unit;
+                    $itemName = $prod->Name;
+                    $price    = $prod->Price;
+                    $unit     = $prod->Unit;
                     if (empty($variant)) $variant = $prod->color;
                 } else {
                     $itemName = $itemData['productName'];
@@ -202,10 +204,12 @@ class OrderController extends Controller
                         // Variant Logic
                         $isIndustry18 = ($order->Industry == 18);
                         $variant = $itemData['variant'] ?? $itemData['color'] ?? ($isIndustry18 ? '000' : '');
-                        $prod = Product::where('code', $cleanCode)->first();
+                        $prod = Product::where('code', $cleanCode)
+                                ->where('Variant', $variant)       
+                                ->first();
                         if ($prod) {
-                            $itemName = $prod->name;
-                            $unit     = $prod->unit;
+                            $itemName = $prod->Name;
+                            $unit     = $prod->Unit;
                             if (empty($variant)) $variant = $prod->color;
                         } else {
                             $itemName = $itemData['productName'] ?? 'N/A';

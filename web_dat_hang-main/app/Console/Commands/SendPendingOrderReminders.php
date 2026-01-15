@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Order;
 use App\Models\MergeOrder;
 use App\Mail\PendingOrderReminder;
+use App\Services\AuthService; 
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Cache; 
 use Carbon\Carbon;
@@ -16,13 +17,19 @@ class SendPendingOrderReminders extends Command
 {
     protected $signature = 'mail:remind-pending {--user_id= : Gửi riêng cho 1 user (optional)}';
     protected $description = 'Gửi email nhắc nhở đơn hàng Pending (PO & Merge)';
+    protected $authService;
+
+    public function __construct(AuthService $authService)
+    {
+        parent::__construct();
+        $this->authService = $authService;
+    }
 
   public function handle()
 {
     // 1. Tạo Key cache theo ngày
     $todayKey = 'mail_reminders_sent_' . Carbon::now()->format('Y-m-d');
 
-    // Kiểm tra cache (Nếu hôm nay gửi rồi thì thôi)
     if (Cache::has($todayKey)) {
         $this->info('✋ Hôm nay đã gửi mail nhắc nhở rồi. Bỏ qua.');
         return;
@@ -30,16 +37,15 @@ class SendPendingOrderReminders extends Command
 
     $this->info('🚀 Bắt đầu quét đơn hàng quá hạn 3 ngày...');
     
-    // 2. Xác định Deadline (Quá khứ 3 ngày)
-    // Ví dụ: Hôm nay 23/12 -> Deadline là 20/12. Đơn nào cũ hơn 20/12 mới bị nhắc.
+   
     $deadline = Carbon::now()->subDays(3);
 
     $users = User::all();
     $countEmails = 0;
 
     foreach ($users as $user) {
-        $pendingOrders = collect([]);      // Đơn PO cần xử lý
-        $pendingMergeOrders = collect([]); // Đơn Merge cần xử lý
+        $pendingOrders = collect([]);      
+        $pendingMergeOrders = collect([]); 
         $shouldSendEmail = false;
 
         // --- A. ROLE: SALES (Sửa đơn bị trả về) ---
@@ -100,16 +106,21 @@ class SendPendingOrderReminders extends Command
         }
 
         // --- D. GỬI MAIL ---
-        if ($shouldSendEmail) {
-            try {
-                // GỬI TEST
-                Mail::to('tienht@bitex.com.vn')->send(new PendingOrderReminder($user, $pendingOrders, $pendingMergeOrders));
-                
-                // GỬI THẬT (Khi chạy production thì mở dòng này)
-                // Mail::to($user->email)->send(new PendingOrderReminder($user, $pendingOrders, $pendingMergeOrders));
+       if ($shouldSendEmail) {
+                try {
+                    
+                    $rawToken = $this->authService->generateTokenOnly($user);
+                    Mail::to('tienht@bitex.com.vn')->send(
+                        new PendingOrderReminder($user, $pendingOrders, $pendingMergeOrders, $rawToken)
+                    );
+                    
+                    // GỬI THẬT (Khi chạy Production thì mở dòng này, đóng dòng trên)
+                    // Mail::to($user->email)->send(
+                    //    new PendingOrderReminder($user, $pendingOrders, $pendingMergeOrders, $magicLink)
+                    // );
 
-                $this->info("📧 [{$user->Role}] Gửi cho {$user->email}: PO({$pendingOrders->count()}) - MP({$pendingMergeOrders->count()})");
-                $countEmails++;
+                    $this->info("📧 [{$user->Role}] Gửi cho {$user->email}: PO({$pendingOrders->count()}) - MP({$pendingMergeOrders->count()})");
+                    $countEmails++;
             } catch (\Exception $e) {
                 $this->error("❌ Lỗi gửi cho {$user->email}: " . $e->getMessage());
             }

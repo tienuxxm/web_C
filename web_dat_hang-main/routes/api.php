@@ -17,6 +17,25 @@ Route::post('register', [AuthController::class, 'register']);
 Route::get('roles',      [RoleController::class,     'role']);
 Route::get('departments', [DepartmentController::class, 'department']);
 Route::post('login',    [AuthController::class, 'login']);
+
+// 1. Route xử lý khi bấm link (Phải đặt tên name chính xác)
+Route::get('auth/email-login', [AuthController::class, 'loginViaEmail'])
+    ->name('auth.email-login'); // Tên này dùng trong Service để tạo link
+
+// 2. Route test gửi mail (Để bạn test trên Postman)
+Route::post('auth/send-email-link', function(Illuminate\Http\Request $request, App\Services\AuthService $service) {
+    try {
+        $service->sendEmailLoginLink(
+            $request->email, 
+            $request->input('target_path', '/dashboard'), 
+            $request->input('order_id')
+        );
+        return response()->json(['message' => 'Đã gửi link đăng nhập vào email của bạn!']);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()], 400);
+    }
+});
+
 Route::middleware('auth:api')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     /* Categories */
