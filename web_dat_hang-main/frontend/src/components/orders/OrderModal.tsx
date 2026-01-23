@@ -66,6 +66,12 @@ export interface OrderFromAPI {
   intendedUse: string;
   orderDate: string;
   estimatedDelivery: string;
+  delivery_info?: {
+    completed_at: string | null;
+    is_late: boolean;
+    days_diff: number;
+    status_label: string;
+  };
   note: string;
   note_history?: {
     name: string;
@@ -100,10 +106,11 @@ interface OrderModalProps {
   order: OrderFromAPI | null;
   onSave: (order: OrderPayload) => void | Promise<void>;
   onClose: () => void;
-  currentUser: any; // Hoặc User type nếu bạn đã có
+  currentUser: any; 
+  opUpdate?(): void;
   readOnly?: boolean;
 }
-const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnly = false }) => {
+const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnly = false ,opUpdate}) => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
@@ -269,7 +276,33 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
       setProductDropdownIndex(null); // Đóng danh sách
     }, 200);
   };
+  // Thêm vào trong OrderModal component
+  const handleRevert = async () => {
+    try {
+      const result = await MySwal.fire({
+        title: 'Xác nhận hoàn trả?',
+        text: "Các đơn PO gốc sẽ được tách ra và chuyển trạng thái về 'Yêu cầu điều chỉnh' để sửa lại.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Đồng ý hoàn trả',
+        cancelButtonText: 'Hủy'
+      });
 
+      if (result.isConfirmed) {
+        await api.post(`merge-orders/${order?.id}/revert`); // Gọi API vừa tạo
+        toast.success('Đã hoàn trả đơn hàng về cho Sales!');
+        if(opUpdate){
+          opUpdate();
+        } 
+        onClose();
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Có lỗi xảy ra khi hoàn trả đơn.');
+    }
+  };
   useEffect(() => {
     if (order) {
       const detectedCategory = order.industry_id
@@ -290,7 +323,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
             price: it.price,
             erpPrice: it.erpPrice,
             color: it.product.color,
-            unit:  it.unit,
+            unit: it.unit,
           };
         }),
         subtotal: order.subtotal,
@@ -444,11 +477,9 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
 
 
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
+  const handleChange = () => {
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'shipping' ? parseFloat(value) || 0 : value
     }));
   };
 
@@ -564,7 +595,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
               productName: value as string,
             };
 
-            // 🔥 CHỈ ÁP DỤNG "RESET" NẾU KHÔNG PHẢI NGÀNH 18
             if (!String(selectedCategoryId).startsWith('18')) {
               newState.productId = '';     // Xóa ID để bắt chọn lại
               newState.productCode = '';   // Xóa Code
@@ -589,52 +619,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
     if (products.length === 0 || formData.items.length === 0) return;
 
   }, [products, formData.items]);
-  const getAvailableStatuses = () => {
-    if (!allStatuses || allStatuses.length === 0) return [];
-    if (!order) return allStatuses.filter(s => s.Type === 1);
-    const currentStatus = Number(order.status);
-
-    if (role === 'Administrator') {
-      return allStatuses;
-    }
-    let allowedTypes: number[] = [currentStatus];
-    if (role === 'Sales') {
-      if (currentStatus === 1 || currentStatus === 10 || currentStatus === 9) {
-        allowedTypes.push(1);
-      }
-    }
-
-    else if (dept === 'Cung ứng' || dept === 'Hành chính - Miền Nam' || role === 'Supply') {
-      // B1.  đơn Mới (1)
-      if (currentStatus === 1) {
-        allowedTypes.push(7); // Chốt
-        allowedTypes.push(10); // Trả về
-      }
-      // B2. Đã Chốt (13)
-      else if (currentStatus === 8) {
-        allowedTypes.push(2);  // Gửi duyệt
-      }
-      // B3. Sếp đã duyệt (3)
-      else if (currentStatus === 3) {
-        allowedTypes.push(4);  // Đang đặt hàng
-      }
-      // B4. Đang đặt (4)
-      else if (currentStatus === 4) {
-        allowedTypes.push(11); // Hoàn thành
-      }
-    }
-
-    // --- C. GIÁM ĐỐC (CEO) ---
-    else if (role === 'Leader') {
-      if (currentStatus === 2) {
-        allowedTypes.push(3); // Duyệt
-        allowedTypes.push(5); // Từ chối
-      }
-    }
-    const uniqueTypes = Array.from(new Set(allowedTypes));
-    const result = allStatuses.filter(s => uniqueTypes.includes(s.Type));
-    return result;
-  };
+  
   const getExecutionInfo = (currentOrder: any, statusId: number) => {
     if (!currentOrder) return { name: '---', time: null };
 
@@ -678,6 +663,8 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
   const canEditDetails = !readOnly && (!order || [1, 10].includes(Number(order.status)));
   const splitOrder = !readOnly && [8].includes(Number(order?.status));
   const Editquantity = ['Supply'].includes(currentUser?.role?.name_role);
+  const viewVendor = ['Supply','Leader'].includes(role);
+
   const modalClass = theme === 'light'
     ? 'bg-white border-gray-200 shadow-2xl'
     : 'glass-panel glass-panel-dark border-white/10';
@@ -748,7 +735,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                 </select>
               </div>
               {/* Nhà cung cấp */}
-              {role === 'Supply' && (
+              {viewVendor  &&(
                 <div>
                   <label className={labelClass}>Nhà cung cấp <span className="text-red-500">*</span></label>
 
@@ -774,7 +761,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                         onBlur={() => setTimeout(() => setShowSupplierSuggestions(false), 200)}
 
                         placeholder={loadingSuppliers ? "Đang tải danh sách..." : "Chọn hoặc nhập tên NCC..."}
-                        disabled={!selectedCategoryId}
+                        disabled={!selectedCategoryId||!canEditDetails}
                         autoComplete="off"
                         className={inputClass}
                       />
@@ -852,7 +839,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                   name="intendedUse"
                   value={formData.intendedUse}
                   onChange={handleChange}
-                  disabled={readOnly}
+                  disabled={readOnly||!canEditDetails}
                   placeholder="VD: Mua bán, Nội bộ..."
                   className={inputClass}
                 />
@@ -880,18 +867,12 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
             {/* List Items */}
             <div className="space-y-3">
               {formData.items.map((item, index) => {
-                const fallbackProduct = products.find(p => p.code === item.productCode);
-                const currentValue = item.productId || fallbackProduct?.id || '';
 
                 return (
                   <div key={index} className={`p-4 rounded-xl border transition-all ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-white/5 border-white/10'
                     }`}>
                     {/* Grid 12 cột */}
                     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-
-                      {/* 1. Sản phẩm (3 cột) */}
-                      {/* ... Trong vòng lặp map items ... */}
-
                       <div className="sm:col-span-3 relative group">
                         <label className={labelClass}>Sản phẩm</label>
                         <input
@@ -916,16 +897,6 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                             }`}
                           autoComplete="off"
                         />
-
-                        {/* <div className="absolute right-3 top-[38px] pointer-events-none text-gray-400">
-                          {loadingProducts ? (
-                            <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                          ) : (
-                            // Icon kính lúp (nhớ import Search từ lucide-react)
-                            <Search className="w-4 h-4" />
-                          )}
-                        </div> */}
-
                         {/* DANH SÁCH GỢI Ý (Dropdown) */}
                         {ProductDropdownIndex === index && products.length > 0 && !readOnly && (
                           <div className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
@@ -1106,21 +1077,44 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                     );
                   })()}
                 </div>
+                <div className="flex flex-col gap-2 h-full">
+                  {formData.orderNumber?.startsWith('MP')&&(<label className={labelClass}>Ngày giao dự kiến</label>)}
+                  {formData.orderNumber?.startsWith('PO')&&(<label className={labelClass}>Ngày giao mong muốn</label>)}
 
-                {/* CỘT 2: NGÀY GIAO DỰ KIẾN (SỬA Ở ĐÂY) */}
-                <div className="flex flex-col gap-2 h-full"> {/* Thêm h-full vào wrapper */}
-                  <label className={labelClass}>Ngày giao dự kiến</label>
-                  <input
-                    type="date"
-                    name="estimatedDelivery"
-                    value={formData.estimatedDelivery}
-                    min={formData.orderDate}
-                    disabled={!canEditDetails && !readOnly}
-                    onChange={handleChange}
-                    // 👇 THÊM class 'h-full' để input tự dãn chiều cao bằng ô bên cạnh
-                    // 👇 THÊM class 'cursor-pointer' để trải nghiệm tốt hơn
-                    className={`${inputClass} h-full cursor-pointer min-h-[56px]`}
-                  />
+                  {/* Logic hiển thị: Nếu đã hoàn thành (11) thì hiện kết quả so sánh */}
+                  {formData.status === 11 && order?.delivery_info?.completed_at ? (
+                    <div className={`h-full px-3 py-2 rounded-xl border flex flex-col justify-center ${order.delivery_info.is_late
+                      ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+                      : 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
+                      }`}>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Dự kiến: {new Date(formData.estimatedDelivery).toLocaleDateString('vi-VN')}</span>
+
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${order.delivery_info.is_late
+                          ? 'bg-red-100 text-red-600'
+                          : 'bg-green-100 text-green-600'
+                          }`}>
+                          {order.delivery_info.status_label}
+                          {order.delivery_info.days_diff > 0 && ` (${order.delivery_info.days_diff} ngày)`}
+                        </span>
+                      </div>
+
+                      <div className="mt-1 font-semibold text-sm text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                        <span>Hoàn thành:</span>
+                        <span>{new Date(order.delivery_info.completed_at).toLocaleDateString('vi-VN')}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <input
+                      type="date"
+                      name="estimatedDelivery"
+                      value={formData.estimatedDelivery}
+                      min={formData.orderDate}
+                      disabled={!canEditDetails && !readOnly&& !splitOrder}
+                      onChange={handleChange}
+                      className={`${inputClass} h-full cursor-pointer min-h-[56px]`}
+                    />
+                  )}
                 </div>
 
               </div>
@@ -1233,7 +1227,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                 )}
               </>
             )}
-            {(role === 'Supply' || currentUser?.department?.name_department === 'Cung ứng') && (() => {
+            {(role === 'Supply' || currentUser?.department?.name_department === 'Cung ứng') &&!readOnly && (() => {
               const isMergeOrder = formData.orderNumber?.startsWith('MP');
 
               return isMergeOrder ? (
@@ -1269,6 +1263,15 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                       className="px-6 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg flex items-center gap-2"
                     >
                       <Save className="w-4 h-4" /> Hoàn thành đơn
+                    </button>
+                  )}
+                  {formData.status === 5 && (
+                    <button
+                      type="button"
+                      onClick={handleRevert}
+                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                    >
+                      Hoàn trả 
                     </button>
                   )}
                 </>
@@ -1317,6 +1320,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                     </button>
                   )}
 
+                  
 
                 </>
               );
@@ -1341,6 +1345,7 @@ const OrderModal: React.FC<OrderModalProps> = ({ order, onSave, onClose, readOnl
                 </button>
               </>
             )}
+
           </div>
 
         </form>

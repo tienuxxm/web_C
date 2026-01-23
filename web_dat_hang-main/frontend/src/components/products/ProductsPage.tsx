@@ -128,6 +128,7 @@ const ProductsPage: React.FC = () => {
       } finally {
         if (isMounted) setIsLoading(false);
       }
+      console.log(role.name);
     };
 
     fetchProducts();
@@ -182,7 +183,6 @@ const ProductsPage: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   // const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
 
-  const statuses = ['all', 'active', 'inactive', 'out_of_stock'];
 
 
   const getStatusColor = (status: Product['status']) => {
@@ -299,8 +299,7 @@ const ProductsPage: React.FC = () => {
       setShowModal(false);
     } catch (e: any) {
       const message = e?.response?.data?.message || 'Thêm sản phẩm thất bại!';
-      toast.error(message); // 👈 Hiển thị message thực tế từ backend
-      console.error(e);
+      toast.error(message); 
     } finally {
       setIsLoading(false);
     }

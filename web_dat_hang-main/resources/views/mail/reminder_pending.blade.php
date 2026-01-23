@@ -29,8 +29,7 @@
     @php
         // Lấy URL Frontend từ .env (Mặc định local nếu chưa cấu hình)
         // Ví dụ: http://171.244.205.210:8500/web_dat_hang-main
-        $feUrl = env('FRONTEND_URL', 'http://localhost:5173');
-        
+        $feUrl = config('app.frontend_url');        
         $countPO = $pendingOrders ? $pendingOrders->count() : 0;
         $countMP = $pendingMergeOrders ? $pendingMergeOrders->count() : 0;
         $totalCount = $countPO + $countMP;

@@ -639,7 +639,7 @@ class OrderController extends Controller
 
                 $mergeOrder = MergeOrder::create([
                     'DocumentNo'   => $newDocumentNo,
-                    'PostingDate'  => now(),
+                    'PostingDate'  => $orders->first()->PostingDate,
                     'ShipmentDate' => $avgShipmentDate,
                     'Industry'     => $orders->first()->Industry,
                     'Status'       => OrderStatus::TYPE_MERGE,
@@ -1100,7 +1100,7 @@ class OrderController extends Controller
                 return response()->json(['message' => 'Không tìm thấy đơn gộp có mã: ' . $id], 404);
             }
             if ($mergeOrder->Status != 8) {
-                return response()->json(['message' => 'Không thể hủy đơn đã xử lý (Khác trạng thái 8).'], 422);
+                return response()->json(['message' => 'Không thể hủy đơn đã xử lý (Khác trạng thái GỘP).'], 422);
             }
 
             // 2. Lấy danh sách các dòng đơn con đang liên kết
@@ -1140,24 +1140,17 @@ class OrderController extends Controller
             return response()->json(['message' => 'Lỗi hủy đơn: ' . $e->getMessage()], 500);
         }
     }
-    // app/Http/Controllers/OrderController.php
-
-    /**
-     * API Lịch sử đơn hàng dành cho User
-     * GET /api/orders/history
-     */
+   
     public function history(Request $request)
     {
         try {
             $user = JWTAuth::user();
             $limit = $request->get('limit', 6);
-            $type = $request->get('type', 'PO'); // PO hoặc MP
+            $type = $request->get('type', 'PO'); 
 
-            // ---------------------------------------------------------
-            // 1. LOGIC LẤY DANH SÁCH PO (Purchase Orders)
-            // ---------------------------------------------------------
+        
             if ($type === 'PO') {
-                $query = Order::with(['statusInfo', 'items.mergeOrder.statusInfo']) 
+                $query = Order::with(['statusInfo', 'items.mergeOrder.statusInfo','user']) 
                     ->orderBy('CreatedDate', 'desc');
 
                 // Filter tìm kiếm
@@ -1204,13 +1197,14 @@ class OrderController extends Controller
                     } 
                     // Nhóm Đã Gộp (8) -> Check tiến độ của MP cha
                     elseif ($statusId == 8) {
-                        $trackingStep = 3; // Mặc định là đã gộp (Processing)
+                        $trackingStep = 3; 
                         if ($linkedMergeOrder) {
                             $mpStatus = (int)$linkedMergeOrder->Status;
                             if ($mpStatus == 4) $trackingStep = 4; // MP đang đặt hàng
                             if ($mpStatus == 11) $trackingStep = 5; // MP hoàn thành
                             if ($mpStatus == 5) $trackingStep = -1; // MP đã hủy/
                             if ($mpStatus == 2) $trackingStep = 2;
+                            if ($mpStatus == 8) $trackingStep = 2;
                         }
                     } 
                     // Nhóm Đang đặt hàng (Đi lẻ, không qua gộp)
@@ -1234,7 +1228,7 @@ class OrderController extends Controller
                         'supplier_name'     => $order->Supplier,
                         'total_amount'      => $order->items->sum(fn($i) => $i->Quantity * $i->Price),
                         'item_count'        => $order->items->count(),
-                        'item_summary'      => $firstItem ? $firstItem->ItemName . ($order->items->count() > 1 ? '... và ' . ($order->items->count() - 1) . ' SP khác' : '') : '',
+                        'created_name'        => $order->user->name,
                         
                         'status_code'       => $statusId,
                         'status_name'       => $realStatusName,
@@ -1267,7 +1261,7 @@ class OrderController extends Controller
                     if (in_array($statusId, [5])) {
                         $trackingStep = -1; // Hủy/Trả về
                     } elseif ($statusId == 8) {
-                        $trackingStep = 1;  // Nháp (Draft)
+                        $trackingStep = 2;  // Nháp (Draft)
                     } elseif ($statusId == 2) {
                         $trackingStep = 2;  // Chờ duyệt
                     } elseif ($statusId == 3) {
@@ -1289,6 +1283,8 @@ class OrderController extends Controller
                         'total_amount'      => $mp->items->sum(fn($i) => $i->Quantity * $i->Price),
                         'item_count'        => $mp->items->count(),
                         'item_summary'      => $mp->items->first() ? $mp->items->first()->ItemName . '...' : '',
+                        'created_name'        => $mp->originalOrderItems->first()->order->user->name,
+                        
                         
                         'status_code'       => $statusId,
                         'status_name'       => $mp->statusInfo->Name ?? 'Unknown',

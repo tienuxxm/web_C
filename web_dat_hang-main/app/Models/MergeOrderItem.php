@@ -16,9 +16,9 @@ class MergeOrderItem extends Model
         'Status', 'PurchaseLineID', 'CreatedBy', 'CreatedDate'
     ];
 
-    public function orderMerged()
+    public function mergeOrder()
     {
-        return $this->belongTo(MergeOrder::class,'DocumentNo','DocumentNo');
+        return $this->belongsTo(MergeOrder::class,'DocumentNo','DocumentNo');
     }
     // Thêm quan hệ tới dòng đơn hàng gốc
     public function originalLine()

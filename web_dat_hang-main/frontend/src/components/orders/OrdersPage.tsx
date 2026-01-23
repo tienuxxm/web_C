@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus, Search, RotateCcw, Edit, Eye, Package, Clock, CheckCircle,
-  XCircle, AlertCircle, GitMerge, Upload, HandCoins,
+  XCircle, AlertCircle, GitMerge, Upload, HandCoins,Download,CheckSquare,Square,
  Split, Filter,
-} from 'lucide-react'; import api from '../../services/api';
+} from 'lucide-react'; 
+import api from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import { OrderPayload, OrderFromAPI } from './OrderModal';
 import OrderModal from './OrderModal';
@@ -12,7 +13,6 @@ import { useLocation } from 'react-router-dom';
 import MySwal from '../../utils/swal';
 import { getStatConfig } from '../../utils/orderStatusMapping';
 import toast from 'react-hot-toast';
-import { format } from 'date-fns';
 
 interface OrderItem {
   productCode: string;
@@ -60,8 +60,6 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
   const [importIndustryId, setImportIndustryId] = useState<string>('');
   const { searchTerm: initialSearch } = location.state || {};
   const [search, setSearch] = useState(initialSearch || '');
-  const [monthlyOrders, setMonthlyOrders] = useState<any[]>([]);
-  const [yearlyOrders, setYearlyOrders] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -120,6 +118,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
     } finally {
       setLoading(false);
     }
+    console.log(currentUser.role.name_role);
+    console.log(currentUser.department.name_department);
   };
 
 
@@ -283,15 +283,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
 
   if (autoOpenCode) {
     console.log("Tìm thấy lệnh mở đơn:", autoOpenCode);
-    
-    // 2. Gọi hàm handleEditOrder của bạn
-    // Vì hàm handleEditOrder nhận vào object Order, ta fake một object chỉ có ID
-    // Logic của bạn: const orderId = order.id || order.orderNumber; -> Nên chỉ cần truyền id là đủ
     const fakeOrderObj = { id: autoOpenCode, orderNumber: autoOpenCode } as any;
-    
     handleEditOrder(fakeOrderObj);
-
-    // 3. Xóa lệnh khỏi session để F5 không bị bật lại popup
     sessionStorage.removeItem('AUTO_OPEN_ORDER_CODE');
   }
 }, []);
@@ -365,6 +358,20 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
     }
   };
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  const isSelectable = (order: any) => {
+    const status = Number(order.status);
+    if (mode === 'normal') {
+      return status === 7;
+    }
+    if (mode === 'merged' || mode === 'completed') {
+      return [3, 4, 11].includes(status);
+    }
+    
+    return false;
+  };
+  const eligibleOrders = useMemo(() => {
+    return orders.filter(o => isSelectable(o));
+  }, [orders, mode]);
   const [isSelectingAll, setIsSelectingAll] = useState(false);
   const toggleOrderSelection = (orderId: string) => {
     setSelectedOrders(prev =>
@@ -373,25 +380,17 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
         : [...prev, orderId]
     );
   };
-  const handleSelectAll = async () => {
-    if (selectedOrders.length > 0) {
-      setSelectedOrders([]);
-      return;
-    }
-    try {
-      setIsSelectingAll(true);
-      const res = await api.get('/orders/ids?status=7');
-      setSelectedOrders(res.data);
-      toast.success(`Đã chọn toàn bộ ${res.data.length} đơn hàng "Chốt" trong hệ thống.`);
-    } catch (error) {
-      toast.error("Lỗi khi lấy danh sách ID.");
-    } finally {
-      setIsSelectingAll(false);
+  const isHeaderChecked = eligibleOrders.length > 0 && 
+                          eligibleOrders.every(o => selectedOrders.includes(o.id));
+  const handleSelectAll = () => {
+    if (isHeaderChecked) {
+      const currentIds = eligibleOrders.map(o => o.id);
+      setSelectedOrders(prev => prev.filter(id => !currentIds.includes(id)));
+    } else {
+      const newIds = eligibleOrders.map(o => o.id);
+      setSelectedOrders(prev => Array.from(new Set([...prev, ...newIds])));
     }
   };
-
-
-  const isHeaderChecked = selectedOrders.length > 0;
   const handleMergeOrders = async () => {
     // 1. Kiểm tra có đơn trùng không
     try {
@@ -468,7 +467,6 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
           targetMergeId = selectedMerge;
         }
       }
-      // Nếu không có đơn trùng -> Hỏi xác nhận gộp mới bình thường
       else {
         const confirm = await MySwal.fire({
           title: 'Xác nhận gộp đơn?',
@@ -480,12 +478,11 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
         if (!confirm.isConfirmed) return;
       }
 
-      // 3. Gửi API Merge chính thức
       MySwal.fire({ title: 'Đang xử lý gộp...', didOpen: () => MySwal.showLoading() });
 
       await api.post('/orders/merge', {
         order_ids: selectedOrders,
-        target_merge_id: targetMergeId // Gửi kèm ID nếu chọn gộp vào cũ
+        target_merge_id: targetMergeId 
       });
 
       await MySwal.fire('Thành công!', 'Đã gộp đơn hàng.', 'success');
@@ -502,23 +499,23 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
     console.log("ID gửi lên server:", mergeId);
     const result = await MySwal.fire({
       title: 'Hủy Đơn Gộp?',
-     html: `
-    <div class="text-left">
-        <p class="mb-4 text-base text-gray-700 dark:text-gray-300">
-            Bạn có chắc chắn muốn xóa đơn gộp <b class="text-gray-900 dark:text-white font-bold">${mergeId}</b> không?
-        </p>
-        
-        <div class="p-4 rounded-xl border bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20">
-            <p class="text-sm font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
-                ⚠️ Lưu ý quan trọng:
+      html: `
+        <div class="text-left">
+            <p class="mb-4 text-base text-gray-700 dark:text-gray-300">
+                Bạn có chắc chắn muốn xóa đơn gộp <b class="text-gray-900 dark:text-white font-bold">${mergeId}</b> không?
             </p>
-            <ul class="list-disc pl-5 text-sm text-red-800/80 dark:text-red-200/70 space-y-1">
-                <li>Đơn gộp <span class="font-semibold">${mergeId}</span> sẽ bị xóa vĩnh viễn.</li>
-                <li>Các đơn con sẽ được hoàn trả về trạng thái <span class="font-bold text-red-700 dark:text-red-400">Chốt</span>.</li>
-            </ul>
+            
+            <div class="p-4 rounded-xl border bg-red-50 border-red-100 dark:bg-red-500/10 dark:border-red-500/20">
+                <p class="text-sm font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-2">
+                    ⚠️ Lưu ý quan trọng:
+                </p>
+                <ul class="list-disc pl-5 text-sm text-red-800/80 dark:text-red-200/70 space-y-1">
+                    <li>Đơn gộp <span class="font-semibold">${mergeId}</span> sẽ bị xóa vĩnh viễn.</li>
+                    <li>Các đơn con sẽ được hoàn trả về trạng thái <span class="font-bold text-red-700 dark:text-red-400">Chốt</span>.</li>
+                </ul>
+            </div>
         </div>
-    </div>
-`,
+        `,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33', // Màu đỏ cho hành động xóa
@@ -622,26 +619,59 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
       event.target.value = '';
     }
   };
+  const handleBatchExportZip = async () => {
+    if (selectedOrders.length === 0) {
+      toast.error("Vui lòng chọn ít nhất 1 đơn hàng để xuất.");
+      return;
+    }
+
+    try {
+      MySwal.fire({
+        title: 'Đang nén file...',
+        text: `Đang tạo file ZIP cho ${selectedOrders.length} đơn hàng. Vui lòng đợi...`,
+        didOpen: () => MySwal.showLoading(),
+        allowOutsideClick: false
+      });
+
+      const response = await api.post('/orders/export-zip', {
+        order_ids: selectedOrders
+      }, {
+        responseType: 'blob' 
+      });
+
+      // Tạo link tải ảo
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `Batch_Orders_${dateStr}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      MySwal.close();
+      toast.success("Tải xuống thành công!");
+      setSelectedOrders([]); // Reset sau khi tải xong
+
+    } catch (error) {
+      console.error(error);
+      MySwal.fire('Lỗi', 'Không thể xuất file ZIP. Vui lòng thử lại.', 'error');
+    }
+  };
 
   useEffect(() => {
     const user = getCurrentUser();
     setCurrentUser(user);
   }, []);
-
-  
-
-  
   useEffect(() => {
     setOrders([]);
     setSelectedOrders([]);
     loadStats();
-
     if (mode === 'normal' || mode === 'merged') {
       fetchOrders();
     }
-  }, [mode, page, refreshKey, currentUser, search, filterType]);
-
-
+  }, [mode, page, refreshKey, currentUser, search, filterType,selectedStatus]);
   const reloadList = () => {
     setRefreshKey(prev => prev + 1);
   };
@@ -668,9 +698,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
   useEffect(() => {
     setPage(1);
   }, [mode])
-  useEffect(() => {
-    fetchOrders();
-  }, [search, page, selectedStatus, mode]);
+
 
 
   const renderPagination = () => {
@@ -709,10 +737,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
       )
     ));
   };
-  const STATUS_CHOT = 7;
-  const eligibleOrders = orders.filter(o => Number(o.status) === STATUS_CHOT);
-  const showMergeButton = mode === 'normal' && selectedOrders.length > 0;
-  const showCheckbox = mode === 'normal';
+    const viewVendor = ['Supply','Leader'].includes(role);
+
   return (
     <div className="h-full flex flex-col space-y-6 animate-fade-in-up">
       {/* Page Header */}
@@ -781,7 +807,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
             />
           </div>
 
-          {showMergeButton && (
+          {mode === 'normal' && selectedOrders.length > 0 && (
             <div className='flex items-center space-x-4 mb-4 lg:mb-0 animate-fade-in-up'>
               <button
                 onClick={handleMergeOrders}
@@ -789,9 +815,19 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
               >
                 <GitMerge className="h-5 w-5" />
                 <span className="hidden sm:inline">Gộp {selectedOrders.length} đơn đã chọn</span>
-                <span className="sm:hidden">Merge ({selectedOrders.length})</span>
               </button>
             </div>
+          )}
+          {(mode === 'merged' || mode === 'completed') && selectedOrders.length > 0 && (
+              <div className='flex items-center space-x-4 mb-4 lg:mb-0 animate-fade-in-up'>
+                <button
+                  onClick={handleBatchExportZip}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl transition-all shadow-lg animate-fade-in"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Xuất PDF ({selectedOrders.length})</span>
+                </button>
+              </div>
           )}
 
           {/* Filters */}
@@ -817,6 +853,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
                 if (!importIndustryId) { toast.error("Vui lòng chọn Ngành hàng trước!"); return; }
                 fileInputRef.current?.click();
               }}
+              title='[ProductCode] , [ProductName], [Quantity], [Price] , [Supplier] , [Variant] , [IntendedUse] , [Note] , [DeliveryDate]'
               className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium rounded-lg transition-all shadow-lg hover:shadow-green-500/30"
             >
               <Upload className="w-4 h-4" />
@@ -849,7 +886,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
             <thead className={`border-b ${theme === 'light' ? 'bg-gray-50 border-gray-200' : 'bg-gray-800/50 border-gray-700/50'}`}>
               <tr>
                 <th className="text-left p-2 sm:p-4 text-gray-500 dark:text-gray-300 font-medium text-xs sm:text-sm w-12">
-                  {showCheckbox && eligibleOrders.length > 0 && (
+                  {eligibleOrders.length > 0 && (
                     <input
                       type="checkbox"
                       checked={isHeaderChecked}
@@ -859,7 +896,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
                   )}
                 </th>
                 <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Mã đơn</th>
-                <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Nhà cung cấp</th>
+                {viewVendor && (<th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Nhà cung cấp</th>)}
                 <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Mặt hàng</th>
                 <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Đơn giá</th>
                 <th className="text-left p-2 sm:p-4 text-blue-500 dark:text-gray-300 font-medium text-xs sm:text-sm">Trạng thái</th>
@@ -869,10 +906,11 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
             </thead>
             <tbody>
               {filteredOrders.map((order) => {
+                const canSelect = isSelectable(order);
                 return (
                   <tr key={order.id} className="border-b border-blue-100 dark:border-gray-700/30 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                     <td className="p-2 sm:p-4">
-                      {showCheckbox && Number(order.status) === 7 && (
+                      {canSelect && (
                         <input
                           type="checkbox"
                           checked={selectedOrders.includes(order.id)}
@@ -888,9 +926,12 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
                         </div>
                       </div>
                     </td>
+                   {viewVendor && (
                     <td className="p-2 sm:p-4">
                       <p className="text-gray-900 dark:text-white text-xs sm:text-sm">{order.supplier_name}</p>
                     </td>
+                    )}
+                    
                     <td className="p-2 sm:p-4">
                       <div>
                         <p className="text-gray-900 dark:text-white text-xs sm:text-sm">{order.items.length} item(s)</p>
@@ -977,6 +1018,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ mode, filterType }) => {
           onClose={() => setShowModal(false)}
           readOnly={readOnlyMode}
           currentUser={currentUser}
+          opUpdate={fetchOrders}
         />
       )}
     </div>

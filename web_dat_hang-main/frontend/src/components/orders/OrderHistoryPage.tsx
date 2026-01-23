@@ -18,6 +18,7 @@ interface OrderHistoryItem {
   status_code: number;
   status_name: string;
   tracking_step: number;
+  created_name :string;
   merged_id: string | null;
 }
 
@@ -204,7 +205,7 @@ const OrderHistoryPage: React.FC = () => {
                             {order.id}
                          </div>
                          <div className="text-xs text-gray-500 mt-0.5 max-w-[200px] truncate" title={order.item_summary}>
-                            {order.item_summary || 'Chưa có thông tin SP'}
+                            {order.created_name || 'Chưa có thông tin SP'}
                          </div>
                          {/* Mobile Only: Date shown here on small screens */}
                          <div className="sm:hidden text-[10px] text-gray-400 mt-1">

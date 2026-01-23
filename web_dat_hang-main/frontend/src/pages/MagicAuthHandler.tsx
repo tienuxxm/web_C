@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
-// Hàm giải mã JWT đơn giản (không cần cài thêm thư viện jwt-decode)
 function parseJwt(token: string) {
     try {
         const base64Url = token.split('.')[1];
@@ -22,14 +21,14 @@ const MagicAuthHandler = () => {
 
   useEffect(() => {
     const token = searchParams.get('token');
-    const redirectPath = searchParams.get('redirect') || '/';
+    const redirectParam = searchParams.get('redirect') || '/';    
     const openOrderCode = searchParams.get('open_order');
 
     if (token) {
       // 1. Lưu Token
       localStorage.setItem('token', token);
 
-      // 2. GIẢI MÃ TOKEN ĐỂ LẤY USER INFO (Bước quan trọng để fix lỗi)
+      // 2. GIẢI MÃ TOKEN ĐỂ LẤY USER INFO 
       const decodedData = parseJwt(token);
       
       if (decodedData) {
@@ -52,9 +51,15 @@ const MagicAuthHandler = () => {
         sessionStorage.setItem('AUTO_OPEN_ORDER_CODE', openOrderCode);
       }
 
-      // 4. Chuyển hướng
-      // Dùng window.location để đảm bảo App reload và nhận diện localStorage mới
-      window.location.href = redirectPath; 
+      const basePath = import.meta.env.VITE_BASE_PATH || '';
+      const cleanBasePath = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath;
+      const cleanRedirectPath = redirectParam.startsWith('/') ? redirectParam : '/' + redirectParam;
+      const finalUrl = `${cleanBasePath}${cleanRedirectPath}`;
+
+      console.log("Redirecting to:", finalUrl); // Log để debug nếu cần
+
+      // 4. Chuyển hướng (Native reload)
+      window.location.href = finalUrl;    
     } else {
       navigate('/login');
     }

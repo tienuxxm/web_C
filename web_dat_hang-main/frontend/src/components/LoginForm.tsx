@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ArrowRight , BookOpen} from 'lucide-react';
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string) => void;
@@ -94,6 +94,22 @@ const LoginForm: React.FC<LoginFormProps> = ({
             )}
           </div>
         </button>
+        <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+        <a 
+          // Đường dẫn này trỏ tới file trong thư mục public của Frontend
+          href={`${import.meta.env.BASE_URL}docs/Huong_Dan_Su_Dung.pdf`}          
+          // Thuộc tính download sẽ ép trình duyệt tải về thay vì mở tab mới
+          download="Tai_Lieu_Huong_Dan_Dat_Hang.pdf" 
+          
+          className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors group"
+        >
+          <div className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-full group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 transition-colors">
+            {/* Bạn có thể chọn icon BookOpen hoặc Download */}
+            <BookOpen size={16} /> 
+          </div>
+          <span>Tải tài liệu hướng dẫn sử dụng</span>
+        </a>
+      </div>
       </form>
     </div>
   );

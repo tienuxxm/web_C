@@ -22,19 +22,7 @@ Route::post('login',    [AuthController::class, 'login']);
 Route::get('auth/email-login', [AuthController::class, 'loginViaEmail'])
     ->name('auth.email-login'); // Tên này dùng trong Service để tạo link
 
-// 2. Route test gửi mail (Để bạn test trên Postman)
-Route::post('auth/send-email-link', function(Illuminate\Http\Request $request, App\Services\AuthService $service) {
-    try {
-        $service->sendEmailLoginLink(
-            $request->email, 
-            $request->input('target_path', '/dashboard'), 
-            $request->input('order_id')
-        );
-        return response()->json(['message' => 'Đã gửi link đăng nhập vào email của bạn!']);
-    } catch (\Exception $e) {
-        return response()->json(['error' => $e->getMessage()], 400);
-    }
-});
+
 
 Route::middleware('auth:api')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
@@ -71,11 +59,13 @@ Route::middleware('auth:api')->group(function () {
         Route::post('split', 'split');
         Route::post('import', 'importMultipleOrders');
     });
-
+    Route::get('/merge-orders/{id}/export-pdf', [ExportController::class, 'exportMergeOrderPdf']);
+    Route::post('/orders/export-zip', [ExportController::class, 'exportBatchZip']);
     Route::get('merge-orders/stats', [MergeOrderController::class, 'stats']);
     Route::get('/merge-orders/{id}', [MergeOrderController::class, 'show']);
     Route::put('merge-orders/{id}', [MergeOrderController::class, 'update']);
     Route::get('/merge-orders/items/{id}/distribution', [MergeOrderController::class, 'getDistribution']);
+    Route::post('merge-orders/{id}/revert', [MergeOrderController::class, 'revert']);
     Route::get('merge-orders', [MergeOrderController::class, 'index']);
     Route::post('/export-merged-orders-multi-months', [ExportController::class, 'exportMergedOrdersMultipleMonths']);
     Route::post('/export-merged-orders-multi-years', [ExportController::class, 'exportMergedOrdersMultipleYears']);
